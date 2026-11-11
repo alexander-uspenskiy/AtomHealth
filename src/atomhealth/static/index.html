@@ -236,6 +236,20 @@ td.l, th.l { text-align:left; }
 td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13px; }
 .thumb { width:34px; height:34px; object-fit:cover; border-radius:8px; vertical-align:middle; margin-right:4px; background:var(--surface2); }
 @media (max-width:1000px) { #v-history .cols { grid-template-columns:1fr; } }
+/* ---------- nutrition indicators (overview) ---------- */
+.nind { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:12px; }
+.ni { --c:var(--z1); background:var(--surface2); border-radius:12px; padding:9px 12px 8px; border-left:4px solid var(--c); }
+.ni .l { display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:var(--muted); }
+.ni .l b { color:var(--c); }
+.ni .v { font-size:19px; font-weight:700; letter-spacing:-.02em; margin:2px 0 0; } .ni .v small { font-size:12px; font-weight:500; color:var(--muted); }
+.ni .tr { height:7px; border-radius:99px; background:var(--surface); border:1px solid var(--border); margin:6px 0 3px; overflow:hidden; }
+.ni .tr i { display:block; height:100%; border-radius:99px; background:var(--c); }
+.ni .d { font-size:11.5px; color:var(--text2); }
+.ni.low { --c:var(--z1); } .ni.ok { --c:var(--good); } .ni.warn { --c:var(--z4); } .ni.over { --c:var(--z6); }
+.nlegend { display:flex; gap:10px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); align-self:center; }
+.nlegend i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; }
+.c-low { background:var(--z1); } .c-ok { background:var(--good); } .c-warn { background:var(--z4); } .c-over { background:var(--z6); }
+.stale { background:color-mix(in srgb,var(--z4) 16%,transparent); border-radius:10px; padding:8px 12px; font-size:12.5px; margin-bottom:8px; }
 </style>
 </head>
 <body>
@@ -277,7 +291,9 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
   </div>
 
   <div class="card" id="todayCard">
-    <div class="card-h"><div><h2>Today's meals</h2><p class="sub" id="todaySub"></p></div></div>
+    <div class="card-h"><div><h2>Today's nutrition</h2><p class="sub" id="todaySub"></p></div>
+      <div class="nlegend"><span><i class="c-low"></i>room left</span><span><i class="c-ok"></i>on target</span><span><i class="c-warn"></i>near limit</span><span><i class="c-over"></i>over</span></div></div>
+    <div class="nind" id="nind"></div>
     <div class="scroll" id="todayMeals"></div>
   </div>
 
@@ -726,10 +742,33 @@ function renderHist() {
     R.map(r => `<tr><td>${fdt(r.ts)}</td><td><b>${fmt(r.weight, 2)}</b></td><td>${fmt(r.bmi)}</td><td>${fmt(r.fat_pct)}</td><td>${fmt(r.fat_kg)}</td><td>${fmt(r.lean_kg)}</td><td>${fmt(r.muscle_kg)}</td><td>${fmt(r.water_pct)}</td><td class="muted">${r.source}</td><td>${r.synced ? '✓' : '·'}</td><td><button class="link" onclick="del(${r.id})" aria-label="Delete reading">Delete</button></td></tr>`).join('') + '</tbody></table>'
     : '<div class="empty">Nothing here yet.</div>';
 }
+// Colour by share of the daily target. "limit" nutrients (energy, carbs, fat) turn amber and red when exceeded;
+// "reach" nutrients (protein, fibre) only turn green once met and never red.
+function nState(p, kind) {
+  if (kind === 'reach') return p >= 1 ? 'ok' : p >= .7 ? 'warn' : 'low';
+  return p > 1.15 ? 'over' : p > 1.05 ? 'warn' : p >= .85 ? 'ok' : 'low';
+}
+function renderNind(done) {
+  const n = S.nutrition, box = $('nind');
+  if (!n || !n.kcal) { box.innerHTML = ''; return; }
+  const sum = k => done.reduce((a, m) => a + (m[k] || 0), 0), mg = Object.fromEntries(n.macros.map(m => [m.key, m.g]));
+  const rows = [['Energy', 'kcal', sum('kcal'), n.kcal, 'limit', 'kcal'], ['Protein', 'protein_g', sum('protein_g'), mg.protein, 'reach', 'g'],
+    ['Carbs', 'carbs_g', sum('carbs_g'), mg.carbs, 'limit', 'g'], ['Fat', 'fat_g', sum('fat_g'), mg.fat, 'limit', 'g'],
+    ['Fibre', 'fiber_g', sum('fiber_g'), n.limits.fiber_g, 'reach', 'g']];
+  const say = { low: 'room left', ok: 'on target', warn: 'near limit', over: 'over' };
+  box.innerHTML = rows.filter(r => r[3]).map(([name, , v, t, kind, u]) => {
+    const p = v / t, st = nState(p, kind), left = t - v;
+    const word = kind === 'reach' ? (st === 'ok' ? 'goal met' : st === 'warn' ? 'almost there' : 'keep going') : say[st];
+    return `<div class="ni ${st}"><div class="l"><span>${name}</span><b>${word}</b></div><div class="v">${Math.round(v)}<small> / ${Math.round(t)} ${u}</small></div>` +
+      `<div class="tr" role="progressbar" aria-label="${name}" aria-valuenow="${Math.round(p * 100)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(p, 1) * 100}%"></i></div>` +
+      `<div class="d">${left >= 0 ? Math.round(left) + ' ' + u + (kind === 'reach' ? ' to go' : ' left') : Math.round(-left) + ' ' + u + (kind === 'reach' ? ' above goal' : ' over')}</div></div>`;
+  }).join('');
+}
 function renderToday() {
   const t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const M = (S.meals || []).filter(m => m.ts >= t0 / 1000), done = M.filter(m => m.status === 'confirmed');
   const sum = k => done.reduce((a, m) => a + (m[k] || 0), 0), tgt = S.nutrition && S.nutrition.kcal;
+  renderNind(done);
   $('todaySub').textContent = M.length ? `${Math.round(sum('kcal'))}${tgt ? ' / ' + tgt : ''} kcal saved · P ${Math.round(sum('protein_g'))} g · C ${Math.round(sum('carbs_g'))} g · F ${Math.round(sum('fat_g'))} g` + (M.length > done.length ? ` · ${M.length - done.length} waiting for Save in Telegram` : '') : '';
   $('todayMeals').innerHTML = M.length ? '<table><tbody>' + [...M].reverse().map(m => `<tr><td class="l">${new Date(m.ts * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</td><td class="l"><b>${esc(m.type && m.type !== 'unknown' ? m.type[0].toUpperCase() + m.type.slice(1) : 'Meal')}</b></td>` +
     `<td class="l">${Array.from({ length: Math.min(m.photos, 3) }, (_, i) => `<img class="thumb" loading="lazy" src="/api/food/${m.id}/photo/${i}" alt="">`).join('')}</td><td class="l items">${m.items.map(i => esc(i.name)).join(', ')}</td><td><b>${fmt(m.kcal, 0)}</b> kcal</td><td>${m.status === 'pending' ? '<span class="chip z4">Pending</span>' : ''}</td></tr>`).join('') + '</tbody></table>'
@@ -767,9 +806,18 @@ let coachAll = false;
 function renderCoach() {
   const A = S.advice || { today: [], week: null }, box = $('coachFeed'); box.textContent = '';
   const items = [...A.today]; if (A.week && !items.some(i => i.id === A.week.id)) items.push(A.week);
+  // Advice is written once, when asked for. Say so when meals were logged after the newest daily advice.
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const lastMeal = Math.max(0, ...(S.meals || []).filter(m => m.ts >= t0 / 1000).map(m => m.ts));
+  const lastDay = Math.max(0, ...A.today.filter(i => i.kind === 'day').map(i => i.ts));
+  if (lastMeal && lastMeal > lastDay) {
+    const w = document.createElement('div'); w.className = 'stale';
+    w.textContent = lastDay ? 'You logged meals after the latest daily advice below. Tap "Today\'s advice" to refresh it.' : 'Meals are logged today but there is no daily advice yet. Tap "Today\'s advice" to get it.';
+    box.append(w);
+  }
   if (!items.length) {
     const e = document.createElement('div'); e.className = 'empty'; e.style.padding = '14px';
-    e.textContent = 'No advice yet today. Tap "Today\'s advice", or log meals in Telegram and a summary arrives in the evening.';
+    e.textContent = lastMeal ? 'No advice written yet.' : 'No advice yet today. Tap "Today\'s advice", or log meals in Telegram and a summary arrives in the evening.';
     box.append(e); return;
   }
   items.forEach((i, n) => {
