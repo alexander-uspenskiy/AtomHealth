@@ -10,15 +10,17 @@ import csv
 import io
 import json
 import os
+import re
 import secrets
 import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
 
+import aiohttp
 from aiohttp import web
 
-from . import bodycomp, config, food  # noqa: F401  (config loads .env)
+from . import bodycomp, bot as tgbot, config, food
 from .llm import LLMError
 
 PKG_DIR = Path(__file__).resolve().parent            # src/atomhealth
@@ -46,7 +48,7 @@ CREATE TABLE IF NOT EXISTS readings(
   impedance INTEGER, source TEXT DEFAULT 'scale', synced INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS meals(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, photo_path TEXT, caption TEXT,
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, caption TEXT,
   meal_type TEXT, kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL, fiber_g REAL,
   confidence REAL, status TEXT NOT NULL DEFAULT 'pending',  -- pending | confirmed | discarded
   source TEXT DEFAULT 'telegram', raw_json TEXT);
@@ -54,6 +56,16 @@ CREATE TABLE IF NOT EXISTS meal_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
   name TEXT NOT NULL, grams REAL, kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL);
 CREATE INDEX IF NOT EXISTS meals_ts ON meals(ts);
+""")
+# meal photos live in the DB as reduced JPEG blobs (one file to back up). Drop an empty pre-release layout.
+if (cols := {r["name"] for r in db.execute("PRAGMA table_info(meal_photos)")}) and "data" not in cols:
+    if db.execute("SELECT COUNT(*) FROM meal_photos").fetchone()[0] == 0:
+        db.execute("DROP TABLE meal_photos")
+db.executescript("""
+CREATE TABLE IF NOT EXISTS meal_photos(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+  idx INTEGER NOT NULL, mime TEXT NOT NULL DEFAULT 'image/jpeg', data BLOB NOT NULL,
+  UNIQUE(meal_id, idx));
 """)
 db.execute("PRAGMA foreign_keys=ON")
 
@@ -332,34 +344,180 @@ async def health_ack(request):
     return web.json_response({"acked": ids})
 
 
-MEALS_DIR = DATA_DIR / "meals"
 MAX_UPLOAD = 15 * 1024 * 1024
 
 
 async def food_analyze(request):
-    """POST multipart: photo (file, optional) + caption (text, optional). Stores a pending meal."""
+    """POST multipart: photo (file, repeatable: one eating session), caption (text), meal_id (optional).
+    With meal_id, the photos/caption are added to that still-pending meal and the whole session is
+    re-analysed. Otherwise a new pending meal is stored."""
     local_only(request)
-    photo, caption = None, ""
+    photos, caption, meal_id = [], "", None
     if request.content_type == "multipart/form-data":
         async for part in await request.multipart():
             if part.name == "photo":
-                photo = bytes(await part.read(decode=False)) or None
-                if photo and len(photo) > MAX_UPLOAD:
-                    raise web.HTTPRequestEntityTooLarge(max_size=MAX_UPLOAD, actual_size=len(photo))
+                data = bytes(await part.read(decode=False))
+                if data:
+                    photos.append(data)
+                if len(data) > MAX_UPLOAD:
+                    raise web.HTTPRequestEntityTooLarge(max_size=MAX_UPLOAD, actual_size=len(data))
+                if len(photos) > food.MAX_PHOTOS:
+                    return web.json_response({"error": f"at most {food.MAX_PHOTOS} photos per meal"}, status=422)
             elif part.name == "caption":
                 caption = (await part.text())[:500]
+            elif part.name == "meal_id":
+                meal_id = (await part.text()).strip() or None
     else:
-        caption = str((await request.json()).get("caption", ""))[:500]
+        body = await request.json()
+        caption, meal_id = str(body.get("caption", ""))[:500], body.get("meal_id")
     try:
-        analysis = await food.analyze_meal(photo, caption)
+        if meal_id is not None:
+            try:
+                meal_id = int(meal_id)
+            except (TypeError, ValueError):
+                raise web.HTTPBadRequest(text="meal_id must be an integer")
+            analysis = await food.extend_meal(db, meal_id, photos, caption)
+            return web.json_response({"meal_id": meal_id, "analysis": analysis})
+        analysis = await food.analyze_meal(photos, caption)
     except food.AnalysisError as e:
         return web.json_response({"error": str(e)}, status=422)
     except LLMError as e:
         return web.json_response({"error": str(e)}, status=503)
     if not analysis["is_food"]:
         return web.json_response({"meal_id": None, "analysis": analysis})
-    mid = food.store_meal(db, analysis, photo=photo, caption=caption, photos_dir=MEALS_DIR, source="api")
+    mid = food.store_meal(db, analysis, photos=photos, caption=caption, source="api")
     return web.json_response({"meal_id": mid, "analysis": analysis})
+
+
+async def food_photo(request):
+    local_only(request)
+    try:
+        got = food.meal_photo(db, int(request.match_info["id"]), int(request.match_info["idx"]))
+    except ValueError:
+        raise web.HTTPBadRequest()
+    if not got:
+        raise web.HTTPNotFound()
+    return web.Response(body=got[1], content_type=got[0], headers={"Cache-Control": "private, max-age=86400"})
+
+
+# ---------- runtime settings (Settings tab) ----------
+TOKEN_RE = re.compile(r"^\d{5,}:[\w-]{20,}$")
+
+
+def parse_ids(v):
+    if isinstance(v, str):
+        v = [x for x in re.split(r"[,\s;]+", v) if x]
+    ids = [int(x) for x in v or []]       # ValueError on junk -> 400 in the endpoint
+    if len(ids) > 20:
+        raise ValueError("at most 20 Telegram IDs")
+    return sorted(set(ids))
+
+
+def telegram_cfg():
+    """Effective bot settings: the Settings tab (kv) wins over .env."""
+    c = kv_get("telegram", {})
+    token = c["token"] if "token" in c else os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    ids = c["allowed_ids"] if "allowed_ids" in c else parse_ids(os.environ.get("TELEGRAM_ALLOWED_IDS", ""))
+    return {"enabled": bool(c.get("enabled", bool(token))), "token": token or "", "allowed_ids": set(ids),
+            "auto_save": bool(c.get("auto_save", False)),
+            "session_minutes": min(max(int(c.get("session_minutes", 10)), 1), 180)}
+
+
+def settings_view(request):
+    c, bot = telegram_cfg(), request.app["bot"]
+    ai = config.llm_settings()
+    return {"telegram": {"enabled": c["enabled"], "has_token": bool(c["token"]),
+                         "token_hint": c["token"][-4:] if c["token"] else "",
+                         "allowed_ids": sorted(c["allowed_ids"]), "auto_save": c["auto_save"],
+                         "session_minutes": c["session_minutes"], "status": bot.status()},
+            "ai": {"base_url": ai["base_url"], "model": ai["model"], "custom": bool(kv_get("ai", {}))}}
+
+
+def latest_weight():
+    r = db.execute("SELECT weight, ts FROM readings ORDER BY ts DESC LIMIT 1").fetchone()
+    return (r["weight"], r["ts"]) if r else None
+
+
+def target_kcal():
+    w = latest_weight()
+    return (bodycomp.nutrition(profile(), w[0] if w else None) or {}).get("kcal")
+
+
+async def get_settings(request):
+    local_only(request)
+    return web.json_response(settings_view(request))
+
+
+async def set_telegram(request):
+    local_only(request)
+    b, bot = await request.json(), request.app["bot"]
+    old, c = telegram_cfg(), dict(kv_get("telegram", {}))
+    try:
+        if "allowed_ids" in b:
+            c["allowed_ids"] = parse_ids(b["allowed_ids"])
+        if "session_minutes" in b:
+            m = int(b["session_minutes"])
+            if not 1 <= m <= 180:
+                raise ValueError("session window must be 1-180 minutes")
+            c["session_minutes"] = m
+    except (ValueError, TypeError) as e:
+        return web.json_response({"error": f"invalid value: {e}"}, status=400)
+    for k in ("enabled", "auto_save"):
+        if k in b:
+            c[k] = bool(b[k])
+    tok = str(b.get("token") or "").strip()
+    if tok:
+        if not TOKEN_RE.match(tok):
+            return web.json_response({"error": "that doesn't look like a bot token (123456:ABC…)"}, status=400)
+        c["token"] = tok
+    elif b.get("clear_token"):
+        c["token"] = ""
+    kv_set("telegram", c)
+    new = telegram_cfg()
+    if (old["token"], old["enabled"]) != (new["token"], new["enabled"]) or bot.state in ("stopped", "error"):
+        await bot.apply()
+    return web.json_response(settings_view(request))
+
+
+async def set_ai(request):
+    local_only(request)
+    b = await request.json()
+    url, model = str(b.get("base_url") or "").strip(), str(b.get("model") or "").strip()[:100]
+    if url and not re.match(r"^https?://[^\s]+$", url):
+        return web.json_response({"error": "base URL must start with http:// or https://"}, status=400)
+    if url or model:
+        kv_set("ai", {"base_url": url, "model": model})
+    else:
+        db.execute("DELETE FROM kv WHERE k='ai'")
+        db.commit()
+    config.set_llm_overrides(kv_get("ai", {}))
+    return web.json_response(settings_view(request))
+
+
+async def test_ai(request):
+    local_only(request)
+    s = config.llm_settings()
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=6)) as http:
+            async with http.get(s["base_url"] + "/models", headers={"Authorization": f"Bearer {s['api_key']}"}) as r:
+                data = await r.json(content_type=None)
+                if r.status >= 400:
+                    return web.json_response({"ok": False, "error": f"server answered {r.status}"})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": f"cannot reach {s['base_url']}: {e}"})
+    models = data.get("data", []) if isinstance(data, dict) else []
+    entry = next((m for m in models if m.get("id") == s["model"]), None)
+    mods = ((entry or {}).get("architecture") or {}).get("input_modalities")
+    return web.json_response({"ok": True, "models": [m.get("id") for m in models], "model_found": entry is not None,
+                              "vision": None if mods is None else "image" in mods})
+
+
+async def test_telegram(request):
+    local_only(request)
+    bot = request.app["bot"]
+    if bot.state != "running":
+        return web.json_response({"error": "The bot is not running."}, status=409)
+    return web.json_response({"sent": await bot.send_test()})
 
 
 async def food_status(request):
@@ -375,15 +533,23 @@ async def food_status(request):
 
 
 async def on_start(app):
+    await app["bot"].apply()
     if not app["no_ble"]:
         app["ble"] = asyncio.create_task(ble_task())
     else:
         live["ble"] = "disabled"
 
 
+async def on_stop(app):
+    await app["bot"].stop()
+
+
 def make_app(lan, no_ble):
     app = web.Application()
     app["lan"], app["no_ble"] = lan, no_ble
+    config.set_llm_overrides(kv_get("ai", {}))
+    app["bot"] = tgbot.TelegramBot(db, cfg=telegram_cfg, target_kcal=target_kcal, latest_weight=latest_weight,
+                                   kv_get=kv_get, kv_set=kv_set)
     async def manifest(request):
         return web.FileResponse(STATIC_DIR / "manifest.webmanifest",
                                 headers={"Content-Type": "application/manifest+json"})
@@ -399,10 +565,15 @@ def make_app(lan, no_ble):
         web.post("/api/profile", set_profile), web.post("/api/readings", post_reading),
         web.post("/api/import", import_readings),
         web.post("/api/food/analyze", food_analyze), web.post("/api/food/{id}/status", food_status),
+        web.get("/api/food/{id}/photo/{idx}", food_photo),
+        web.get("/api/settings", get_settings), web.post("/api/settings/telegram", set_telegram),
+        web.post("/api/settings/telegram/test", test_telegram),
+        web.post("/api/settings/ai", set_ai), web.post("/api/settings/ai/test", test_ai),
         web.delete("/api/readings/{id}", del_reading), web.get("/api/export.csv", export_csv),
         web.get("/api/health/pending", health_pending), web.post("/api/health/ack", health_ack),
     ])
     app.on_startup.append(on_start)
+    app.on_cleanup.append(on_stop)
     return app
 
 

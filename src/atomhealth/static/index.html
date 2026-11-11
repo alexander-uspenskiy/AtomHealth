@@ -162,6 +162,12 @@ tbody tr:hover { background:var(--surface2); } tr:last-child td { border-bottom:
 .callout { background:var(--accent-soft); border-radius:12px; padding:12px 14px; color:var(--text2); font-size:13px; }
 code { background:var(--surface2); border:1px solid var(--border); padding:1px 6px; border-radius:6px; font-size:12.5px; word-break:break-all; }
 ol.steps li { margin-bottom:8px; }
+.check { display:flex; gap:9px; align-items:flex-start; font-size:13px; font-weight:500; color:var(--text); margin:0; cursor:pointer; }
+.check input { width:auto; margin-top:3px; flex:none; }
+.actions { margin-top:18px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.msg-bad { color:var(--bad); font-size:13px; } .msg-ok { color:var(--good); font-size:13px; }
+.contact { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.contact span { flex:1; color:var(--text2); }
 
 /* ---------- nutrition ---------- */
 .kcal-hero { display:grid; grid-template-columns:minmax(260px,1fr) 2fr; gap:18px; margin-top:18px; }
@@ -303,6 +309,26 @@ ol.steps li { margin-bottom:8px; }
     </div>
     <div style="margin-top:18px;display:flex;gap:12px;align-items:center"><button class="btn" id="saveProfile">Save changes</button><span id="saved" class="pos"></span></div>
   </div>
+  <div class="card" id="tgCard"><div class="card-h"><div><h2>Telegram bot</h2><p class="sub">Send a photo of your meal to your bot to log calories and macros. Changes apply immediately.</p></div><span class="chip" id="tgState">…</span></div>
+    <div class="form">
+      <div><label for="tg_token">Bot token</label><input id="tg_token" type="password" autocomplete="off" placeholder="123456:ABC… from @BotFather"><div class="hint" id="tgTokenHint"></div></div>
+      <div><label for="tg_ids">Allowed Telegram IDs</label><input id="tg_ids" inputmode="numeric" placeholder="123456789, 987654321"><div class="hint">Only these people can use the bot. Send it /start to see your ID.</div></div>
+      <div><label for="tg_session">Meal session (minutes)</label><input id="tg_session" type="number" min="1" max="180"><div class="hint">Photos or notes sent within this time join the same meal.</div></div>
+    </div>
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+      <label class="check"><input type="checkbox" id="tg_enabled"><span>Bot enabled</span></label>
+      <label class="check"><input type="checkbox" id="tg_auto"><span>Save a meal automatically when its session ends (otherwise tap ✅ Save in Telegram)</span></label>
+    </div>
+    <div id="tgContacts" style="margin-top:14px"></div>
+    <div class="actions"><button class="btn" id="tgSave">Save and apply</button><button class="btn ghost" id="tgTest">Send test message</button><span id="tgMsg"></span></div>
+  </div>
+  <div class="card"><div class="card-h"><div><h2>Food analysis model</h2><p class="sub">The vision model that reads your meal photos (an OpenAI-compatible server such as llama-server).</p></div></div>
+    <div class="form">
+      <div><label for="ai_url">Server URL</label><input id="ai_url" placeholder="http://127.0.0.1:8082/v1" spellcheck="false"><div class="hint">Empty = value from .env</div></div>
+      <div><label for="ai_model">Model name</label><input id="ai_model" spellcheck="false"><div class="hint">Empty = value from .env</div></div>
+    </div>
+    <div class="actions"><button class="btn" id="aiSave">Save</button><button class="btn ghost" id="aiTest">Test connection</button><span id="aiMsg"></span></div>
+  </div>
   <div class="card"><div class="card-h"><div><h2>Apple Health</h2><p class="sub">Health can only be written by an app on your iPhone, so a Shortcut pulls new readings from here.</p></div></div>
     <ol class="steps" style="margin:0;padding-left:18px">
       <li>Start the server with <code>--lan</code> and use your Mac's name or IP in place of <code>YOUR-MAC</code>.</li>
@@ -352,6 +378,7 @@ function showTab(name) {
   document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'v-' + name);
   try { history.replaceState(null, '', '#' + name); } catch (e) {}
   if (name === 'trends') renderCharts();
+  if (name === 'settings' && typeof loadCfg === 'function') loadCfg(false);
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
@@ -650,6 +677,72 @@ $('saveProfile').onclick = async () => {
   $('saved').textContent = 'Saved ✓'; setTimeout(() => $('saved').textContent = '', 2200); load();
 };
 
+
+/* ---------------- bot + model settings ---------------- */
+let CFG = null;
+const say = (id, text, bad) => { const el = $(id); el.textContent = text || ''; el.className = text ? (bad ? 'msg-bad' : 'msg-ok') : ''; };
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', body: JSON.stringify(body || {}) });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  return { ok: r.ok, j };
+}
+async function loadCfg(fill) {
+  try { CFG = await (await fetch('/api/settings')).json(); } catch (e) { return; }
+  renderTgStatus(); if (fill) fillCfg();
+}
+function fillCfg() {
+  const t = CFG.telegram;
+  $('tg_ids').value = t.allowed_ids.join(', '); $('tg_session').value = t.session_minutes;
+  $('tg_enabled').checked = t.enabled; $('tg_auto').checked = t.auto_save;
+  $('ai_url').value = CFG.ai.custom ? CFG.ai.base_url : ''; $('ai_model').value = CFG.ai.custom ? CFG.ai.model : '';
+  $('ai_url').placeholder = CFG.ai.base_url; $('ai_model').placeholder = CFG.ai.model;
+}
+function renderTgStatus() {
+  const t = CFG.telegram, st = t.status, chip = $('tgState'), hint = $('tgTokenHint');
+  chip.className = 'chip' + (st.state === 'running' ? ' z2' : st.state === 'error' ? ' z5' : '');
+  chip.textContent = st.state === 'running' ? '● Running' + (st.username ? ' as @' + st.username : '')
+    : st.state === 'starting' ? 'Starting…' : st.state === 'error' ? 'Error' : t.has_token ? 'Stopped' : 'No token';
+  hint.textContent = '';
+  if (st.error) { const b = document.createElement('span'); b.className = 'msg-bad'; b.textContent = st.error; hint.append(b); }
+  else if (t.has_token) {
+    hint.append(`Token saved (…${t.token_hint}). Leave empty to keep it. `);
+    const rm = document.createElement('button'); rm.className = 'link'; rm.textContent = 'Remove token';
+    rm.onclick = async () => { if (!confirm('Remove the bot token? The bot will stop.')) return; const r = await post('/api/settings/telegram', { clear_token: true }); if (r.ok) { CFG = r.j; renderTgStatus(); } };
+    hint.append(rm);
+  } else hint.textContent = 'Create a bot with @BotFather in Telegram and paste its token here.';
+  const box = $('tgContacts'); box.textContent = '';
+  for (const c of st.contacts.filter(c => !t.allowed_ids.includes(c.id))) {
+    const row = document.createElement('div'); row.className = 'contact';
+    const who = document.createElement('span'); who.textContent = `${c.name}${c.username ? ' (@' + c.username + ')' : ''} · ID ${c.id} wrote to the bot`;
+    const b = document.createElement('button'); b.className = 'btn ghost'; b.textContent = 'Allow';
+    b.onclick = async () => { const r = await post('/api/settings/telegram', { allowed_ids: [...t.allowed_ids, c.id] }); if (r.ok) { CFG = r.j; fillCfg(); renderTgStatus(); } };
+    row.append(who, b); box.append(row);
+  }
+}
+$('tgSave').onclick = async () => {
+  const body = { enabled: $('tg_enabled').checked, auto_save: $('tg_auto').checked, allowed_ids: $('tg_ids').value, session_minutes: $('tg_session').value };
+  const tok = $('tg_token').value.trim(); if (tok) body.token = tok;
+  const r = await post('/api/settings/telegram', body);
+  if (!r.ok) return say('tgMsg', r.j.error || 'Could not save', true);
+  CFG = r.j; $('tg_token').value = ''; fillCfg(); renderTgStatus(); say('tgMsg', 'Saved ✓'); setTimeout(() => { say('tgMsg'); loadCfg(false); }, 2000);
+};
+$('tgTest').onclick = async () => {
+  const r = await post('/api/settings/telegram/test');
+  say('tgMsg', r.ok ? (r.j.sent ? `Sent to ${r.j.sent} chat(s) ✓` : 'No allowed IDs to message yet') : r.j.error, !r.ok || !r.j.sent);
+};
+$('aiSave').onclick = async () => {
+  const r = await post('/api/settings/ai', { base_url: $('ai_url').value, model: $('ai_model').value });
+  if (!r.ok) return say('aiMsg', r.j.error || 'Could not save', true);
+  CFG = r.j; fillCfg(); say('aiMsg', 'Saved ✓'); setTimeout(() => say('aiMsg'), 2200);
+};
+$('aiTest').onclick = async () => {
+  say('aiMsg', 'Testing…'); const r = (await post('/api/settings/ai/test')).j;
+  if (!r.ok) return say('aiMsg', r.error, true);
+  say('aiMsg', !r.model_found ? `Reachable, but model not listed (available: ${r.models.join(', ') || 'none'})`
+    : r.vision === false ? 'Reachable, but this model does not accept images' : 'Connected ✓' + (r.vision ? ' (vision supported)' : ''), !r.model_found || r.vision === false);
+};
+setInterval(() => { if (!$('v-settings').hidden && !document.hidden) loadCfg(false); }, 5000);
+
 /* ---------------- charts ---------------- */
 const bandPlugin = {
   id: 'band',
@@ -724,6 +817,7 @@ const fromHash = () => { const h = location.hash.slice(1); return TABS.includes(
 addEventListener('hashchange', () => showTab(fromHash()));
 showTab(fromHash());
 load();
+loadCfg(true);
 </script>
 </body>
 </html>

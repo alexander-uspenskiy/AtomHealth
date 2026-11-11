@@ -99,18 +99,134 @@ def test_analyze_requires_input():
         asyncio.run(food.analyze_meal(None, "  "))
 
 
-def test_store_meal_and_status(tmp_path):
+def test_store_meal_and_status():
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row
     db.executescript("""
-      CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, photo_path TEXT, caption TEXT, meal_type TEXT,
+      CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, caption TEXT, meal_type TEXT,
         kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL, fiber_g REAL, confidence REAL, status TEXT, source TEXT, raw_json TEXT);
+      CREATE TABLE meal_photos(id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER, idx INTEGER, mime TEXT, data BLOB);
       CREATE TABLE meal_items(id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER, name TEXT, grams REAL, kcal REAL,
         protein_g REAL, carbs_g REAL, fat_g REAL);""")
-    mid = food.store_meal(db, food.validate(GOOD), photo=_jpeg(), caption="c", photos_dir=tmp_path, ts=1_700_000_000)
+    mid = food.store_meal(db, food.validate(GOOD), photos=[_jpeg(), _jpeg()], caption="c", ts=1_700_000_000)
     row = db.execute("SELECT * FROM meals WHERE id=?", (mid,)).fetchone()
-    assert row["status"] == "pending" and row["kcal"] == 458 and (tmp_path / row["photo_path"]).is_file()
+    assert row["status"] == "pending" and row["kcal"] == 458 and food.meal_photo_count(db, mid) == 2
     assert db.execute("SELECT COUNT(*) FROM meal_items WHERE meal_id=?", (mid,)).fetchone()[0] == 2
+    assert food.meal_photo_count(db, mid) == 2
     assert food.set_status(db, mid, "confirmed") and not food.set_status(db, 999, "confirmed")
     with pytest.raises(ValueError):
         food.set_status(db, mid, "bogus")
+
+
+def _mem_db():
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.executescript("""
+      CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, caption TEXT, meal_type TEXT,
+        kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL, fiber_g REAL, confidence REAL, status TEXT, source TEXT, raw_json TEXT);
+      CREATE TABLE meal_photos(id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER, idx INTEGER, mime TEXT, data BLOB);
+      CREATE TABLE meal_items(id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER, name TEXT, grams REAL, kcal REAL,
+        protein_g REAL, carbs_g REAL, fat_g REAL);""")
+    return db
+
+
+def test_several_photos_go_in_one_request_and_prompt_says_same_session():
+    out, calls = _analyze([json.dumps(GOOD)], image=[_jpeg(), _jpeg(), _jpeg()], caption="")
+    user = calls[0]["messages"][1]["content"]
+    assert sum(p["type"] == "image_url" for p in user) == 3 and "same eating session" in user[0]["text"]
+    assert "never count the same food twice" in calls[0]["messages"][0]["content"]
+
+
+def test_too_many_photos_rejected():
+    with pytest.raises(food.AnalysisError):
+        asyncio.run(food.analyze_meal([_jpeg(size=(10, 10))] * (food.MAX_PHOTOS + 1), ""))
+
+
+def test_extend_pending_meal_reanalyses_all_photos():
+    db = _mem_db()
+    mid = food.store_meal(db, food.validate(GOOD), photos=[_jpeg()], caption="lunch", ts=1_700_000_000)
+    bigger = json.loads(json.dumps(GOOD))
+    bigger["items"].append({"name": "cola", "grams": 330, "kcal": 139, "protein_g": 0, "carbs_g": 35, "fat_g": 0})
+    calls = []
+
+    async def handler(request):
+        calls.append(await request.json())
+        return web.json_response({"choices": [{"message": {"content": json.dumps(bigger)}}]})
+
+    async def go():
+        app = web.Application()
+        app.router.add_post("/v1/chat/completions", handler)
+        async with TestServer(app) as srv:
+            c = llm.LLM(base_url=str(srv.make_url("/v1")), model="m", api_key="k", timeout=5)
+            return await food.extend_meal(db, mid, [_jpeg()], "plus a cola", llm=c)
+
+    a = asyncio.run(go())
+    user = calls[0]["messages"][1]["content"]
+    assert sum(p["type"] == "image_url" for p in user) == 2 and "lunch plus a cola" in user[0]["text"]
+    assert a["totals"]["kcal"] == 458 + 139 and food.meal_photo_count(db, mid) == 2
+    row = db.execute("SELECT * FROM meals WHERE id=?", (mid,)).fetchone()
+    assert row["kcal"] == 597 and row["caption"] == "lunch plus a cola"
+    assert db.execute("SELECT COUNT(*) FROM meal_items WHERE meal_id=?", (mid,)).fetchone()[0] == 3
+
+
+def test_cannot_extend_confirmed_or_missing_meal():
+    db = _mem_db()
+    mid = food.store_meal(db, food.validate(GOOD), photos=[_jpeg()], caption="")
+    food.set_status(db, mid, "confirmed")
+    for m in (mid, 999):
+        with pytest.raises(food.AnalysisError):
+            asyncio.run(food.extend_meal(db, m, [_jpeg()], ""))
+
+
+def test_prepared_jpeg_is_not_reencoded_but_big_or_rotated_ones_are():
+    small = _jpeg(size=(800, 600))
+    assert food.prepare_image(small) == small  # idempotent: no generation loss
+    big = food.prepare_image(_jpeg(size=(3000, 2000)))
+    assert max(Image.open(io.BytesIO(big)).size) == food.MAX_SIDE and food.prepare_image(big) == big
+    rotated = io.BytesIO()
+    im = Image.new("RGB", (800, 400), (10, 200, 10))
+    ex = im.getexif(); ex[0x0112] = 6
+    im.save(rotated, "JPEG", exif=ex)
+    assert Image.open(io.BytesIO(food.prepare_image(rotated.getvalue()))).size == (400, 800)
+
+
+def test_photos_stored_as_blobs_and_retrievable():
+    db = _mem_db()
+    mid = food.store_meal(db, food.validate(GOOD), photos=[_jpeg(size=(900, 600))], caption="")
+    mime, data = food.meal_photo(db, mid, 0)
+    assert mime == "image/jpeg" and Image.open(io.BytesIO(data)).size == (900, 600)
+    assert food.meal_photo(db, mid, 5) is None
+
+
+def test_api_stores_photos_in_db_serves_them_and_extends(monkeypatch):
+    from atomhealth import app as appmod
+
+    seen = []
+
+    async def fake_analyze(images, caption, llm=None):
+        seen.append(len(images))
+        return food.validate(GOOD)
+
+    monkeypatch.setattr(food, "analyze_meal", fake_analyze)
+
+    async def go():
+        from aiohttp import FormData
+        from aiohttp.test_utils import TestClient
+        async with TestClient(TestServer(appmod.make_app(False, True))) as c:
+            fd = FormData()
+            for _ in range(2):
+                fd.add_field("photo", _jpeg(size=(900, 600)), filename="a.jpg", content_type="image/jpeg")
+            fd.add_field("caption", "lunch")
+            r = await (await c.post("/api/food/analyze", data=fd)).json()
+            mid = r["meal_id"]
+            p0 = await c.get(f"/api/food/{mid}/photo/0")
+            p2 = await c.get(f"/api/food/{mid}/photo/2")
+            big = FormData()
+            for _ in range(food.MAX_PHOTOS + 1):
+                big.add_field("photo", _jpeg(size=(50, 50)), filename="a.jpg", content_type="image/jpeg")
+            too_many = await c.post("/api/food/analyze", data=big)
+            return mid, p0.status, p0.content_type, len(await p0.read()), p2.status, too_many.status
+
+    mid, s0, ct, n, s2, many = asyncio.run(go())
+    assert seen == [2] and s0 == 200 and ct == "image/jpeg" and n > 0 and s2 == 404 and many == 422
+    assert food.meal_photo_count(appmod.db, mid) == 2

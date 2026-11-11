@@ -21,10 +21,20 @@ def load_dotenv(path=None):
 load_dotenv()
 
 
+_llm_overrides = {}
+
+
+def set_llm_overrides(d):
+    """Runtime overrides (set from the Settings UI); empty values fall back to the environment."""
+    _llm_overrides.clear()
+    _llm_overrides.update({k: v for k, v in (d or {}).items() if v})
+
+
 def llm_settings():
+    o = _llm_overrides
     return {
-        "base_url": os.environ.get("LLM_BASE_URL", "http://127.0.0.1:8082/v1").rstrip("/"),
-        "model": os.environ.get("LLM_MODEL", "qwen3.8-27b-uncensored"),
+        "base_url": (o.get("base_url") or os.environ.get("LLM_BASE_URL", "http://127.0.0.1:8082/v1")).rstrip("/"),
+        "model": o.get("model") or os.environ.get("LLM_MODEL", "qwen3.8-27b-uncensored"),
         "api_key": os.environ.get("LLM_API_KEY", "local"),
         "timeout": float(os.environ.get("LLM_TIMEOUT", "180")),
     }

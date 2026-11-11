@@ -99,5 +99,6 @@ def test_client_error_is_not_retried_and_empty_content_fails(monkeypatch):
 def test_meal_tables_exist():
     from atomhealth import app
     cols = {r["name"] for r in app.db.execute("PRAGMA table_info(meals)")}
-    assert {"ts", "kcal", "protein_g", "status", "photo_path", "raw_json"} <= cols
+    assert {"ts", "kcal", "protein_g", "status", "raw_json"} <= cols
     assert app.db.execute("PRAGMA table_info(meal_items)").fetchall()
+    assert app.db.execute("PRAGMA table_info(meal_photos)").fetchall()
