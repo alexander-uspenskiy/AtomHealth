@@ -44,7 +44,17 @@ CREATE TABLE IF NOT EXISTS readings(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, weight REAL NOT NULL,
   impedance INTEGER, source TEXT DEFAULT 'scale', synced INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS meals(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, photo_path TEXT, caption TEXT,
+  meal_type TEXT, kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL, fiber_g REAL,
+  confidence REAL, status TEXT NOT NULL DEFAULT 'pending',  -- pending | confirmed | discarded
+  source TEXT DEFAULT 'telegram', raw_json TEXT);
+CREATE TABLE IF NOT EXISTS meal_items(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, grams REAL, kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL);
+CREATE INDEX IF NOT EXISTS meals_ts ON meals(ts);
 """)
+db.execute("PRAGMA foreign_keys=ON")
 
 
 def kv_get(k, default=None):
