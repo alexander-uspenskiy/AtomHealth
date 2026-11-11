@@ -62,7 +62,7 @@ main { max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
 
 /* ---------- primitives ---------- */
 .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); }
-.card + .card, .stack > * + * { margin-top:18px; }
+.card + .card, .stack > * + * { margin-top:14px; }
 .card h2 { margin:0; font-size:15px; font-weight:650; letter-spacing:-.005em; }
 .card .sub { color:var(--muted); font-size:12.5px; margin:2px 0 0; }
 .card-h { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
@@ -95,57 +95,64 @@ tbody tr:hover { background:var(--surface2); } tr:last-child td { border-bottom:
 .scroll { overflow-x:auto; }
 .empty { padding:26px; text-align:center; color:var(--muted); }
 
+/* ---------- overview: compact ---------- */
+#v-overview > .card, #v-overview > .cols { margin-top:14px; }
+#v-overview .card { padding:14px 16px; }
+#v-overview .card-h { margin-bottom:10px; }
+.cols { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:14px; align-items:start; }
+.cols > .card, .cols > .card + .card { margin-top:0; }
+@media (max-width:1000px) { .cols { grid-template-columns:1fr; } }
+
 /* ---------- hero ---------- */
-.hero { display:grid; grid-template-columns:minmax(260px,1.1fr) 2fr; gap:18px; }
+.hero { display:grid; grid-template-columns:minmax(230px,.9fr) 2.4fr; gap:14px; }
 .live { display:flex; flex-direction:column; justify-content:center; background:linear-gradient(160deg,var(--accent-soft),var(--surface)); }
 .live .lbl { font-size:12px; font-weight:650; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:8px; }
-.live .num { font-size:64px; font-weight:750; letter-spacing:-.03em; line-height:1.05; margin:6px 0 2px; }
-.live .num small { font-size:22px; font-weight:600; color:var(--muted); letter-spacing:0; margin-left:4px; }
+.live .num { font-size:46px; font-weight:750; letter-spacing:-.03em; line-height:1.05; margin:6px 0 2px; }
+.live .num small { font-size:18px; font-weight:600; color:var(--muted); letter-spacing:0; margin-left:4px; }
 .live.measuring .num { color:var(--accent); }
-.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
-.kpi { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 15px 10px; box-shadow:var(--shadow); }
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:10px; }
+.kpi { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:9px 12px 7px; box-shadow:var(--shadow); }
+.kpi[data-z] { border-left:3px solid var(--kz); background:color-mix(in srgb,var(--kz) 7%,var(--surface)); }
+.kpi .l { display:flex; justify-content:space-between; align-items:center; gap:6px; }
+.kpi .l .chip { font-size:10.5px; padding:1px 7px; }
 .kpi .l { font-size:12px; color:var(--muted); font-weight:600; }
-.kpi .v { font-size:25px; font-weight:700; letter-spacing:-.02em; margin:2px 0; }
+.kpi .v { font-size:21px; font-weight:700; letter-spacing:-.02em; margin:2px 0; }
 .kpi .v small { font-size:12px; color:var(--muted); font-weight:500; margin-left:3px; }
 .kpi .d { font-size:12px; font-weight:600; }
-.kpi svg { display:block; width:100%; height:26px; margin-top:6px; }
+.kpi svg { display:block; width:100%; height:18px; margin-top:3px; }
 
-/* ---------- gauges ---------- */
-.gauge { padding:4px 0 2px; }
-.gauge + .gauge { margin-top:26px; padding-top:22px; border-top:1px dashed var(--border); }
-.g-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:54px; }
-.g-name { font-weight:650; } .g-val { font-size:20px; font-weight:700; letter-spacing:-.02em; display:flex; align-items:center; gap:10px; }
-.g-val small { font-size:12px; color:var(--muted); font-weight:500; margin-left:-6px; }
-.g-track { position:relative; height:14px; border-radius:99px; background:var(--surface2); }
+/* ---------- gauges (compact) ---------- */
+#gauges { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px 26px; }
+#gauges .empty { grid-column:1/-1; }
+.g-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:9px; }
+.g-name { font-weight:650; font-size:13px; } .g-val { font-size:16px; font-weight:700; letter-spacing:-.02em; display:flex; align-items:center; gap:7px; }
+.g-val small { font-size:11px; color:var(--muted); font-weight:500; margin-left:-4px; }
+.g-val .chip { font-size:10.5px; padding:1px 7px; }
+.g-track { position:relative; height:8px; border-radius:99px; background:var(--surface2); }
 .g-seg { position:absolute; top:0; height:100%; opacity:.9; }
 .g-seg:first-child { border-radius:99px 0 0 99px; } .g-seg:last-of-type { border-radius:0 99px 99px 0; }
 .g-seg.z1{background:var(--z1)} .g-seg.z2{background:var(--z2)} .g-seg.z3{background:var(--z3)}
 .g-seg.z4{background:var(--z4)} .g-seg.z5{background:var(--z5)} .g-seg.z6{background:var(--z6)}
-.g-mark { position:absolute; top:-6px; width:0; transform:translateX(-50%); }
-.g-mark .pin { position:absolute; left:-2px; top:-1px; width:4px; height:26px; border-radius:3px; background:var(--text); box-shadow:0 0 0 2px var(--surface); }
-.g-mark .bub { position:absolute; bottom:30px; left:0; transform:translateX(-50%); background:var(--text); color:var(--surface); font-size:12px; font-weight:700; padding:2px 8px; border-radius:7px; white-space:nowrap; }
-.g-mark .bub::after { content:""; position:absolute; left:50%; bottom:-4px; margin-left:-4px; border:4px solid transparent; border-bottom:0; border-top-color:var(--text); }
+.g-mark { position:absolute; top:-5px; width:0; transform:translateX(-50%); }
+.g-mark .pin { position:absolute; left:-2px; top:0; width:4px; height:18px; border-radius:3px; background:var(--text); box-shadow:0 0 0 2px var(--surface); }
 .g-ref { position:absolute; top:-3px; width:0; transform:translateX(-50%); }
-.g-ref i { position:absolute; left:-1px; top:0; width:2px; height:20px; background:var(--text); opacity:.45; border-radius:2px; }
-.g-ref b { position:absolute; top:22px; left:0; transform:translateX(-50%); font-size:10.5px; font-weight:600; color:var(--text2); white-space:nowrap; }
-.g-ticks { position:relative; height:16px; margin-top:6px; }
-.g-ticks span { position:absolute; transform:translateX(-50%); font-size:10.5px; color:var(--muted); }
-.g-legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:26px; font-size:11.5px; color:var(--text2); }
-.g-legend i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; }
-.g-note { margin-top:10px; font-size:13px; color:var(--text2); }
+.g-ref i { position:absolute; left:-1px; top:0; width:2px; height:14px; background:var(--text); opacity:.4; border-radius:2px; }
+.g-note { margin-top:7px; font-size:12px; color:var(--text2); line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
-/* ---------- goal ---------- */
-.goal-row + .goal-row { margin-top:22px; padding-top:20px; border-top:1px dashed var(--border); }
-.goal-top { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:baseline; }
-.goal-top b { font-size:15px; }
-.pbar { position:relative; height:10px; border-radius:99px; background:var(--surface2); border:1px solid var(--border); margin:12px 0 6px; overflow:hidden; }
+/* ---------- goal (compact) ---------- */
+.goal-row + .goal-row { margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); }
+.goal-top { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.goal-top b { font-size:14px; }
+.goal-line { font-size:12.5px; margin-top:2px; }
+.pbar { position:relative; height:7px; border-radius:99px; background:var(--surface2); border:1px solid var(--border); margin:8px 0 6px; overflow:hidden; }
 .pbar i { display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,var(--accent),#22b5c9); }
-.facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:12px; }
-.fact { background:var(--surface2); border-radius:10px; padding:9px 12px; }
-.fact .l { font-size:11.5px; color:var(--muted); font-weight:600; } .fact .v { font-weight:700; }
+.pbar.good i { background:var(--good); } .pbar.bad i { background:var(--z5); }
+.goal-facts { display:flex; flex-wrap:wrap; gap:3px 16px; font-size:12px; color:var(--text2); }
+.goal-facts .l { color:var(--muted); font-weight:600; margin-right:4px; }
+.goal-note { font-size:12px; color:var(--text2); background:var(--accent-soft); border-radius:9px; padding:7px 10px; margin-bottom:12px; }
 
 /* ---------- charts ---------- */
-.toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px; }
+.toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
 .pills { display:flex; gap:4px; background:var(--surface2); border:1px solid var(--border); padding:3px; border-radius:10px; }
 .pills button { border:0; background:none; color:var(--text2); font:inherit; font-weight:600; font-size:13px; padding:5px 13px; border-radius:7px; cursor:pointer; }
 .pills button[aria-pressed="true"] { background:var(--surface); color:var(--text); box-shadow:var(--shadow); }
@@ -162,21 +169,21 @@ tbody tr:hover { background:var(--surface2); } tr:last-child td { border-bottom:
 .callout { background:var(--accent-soft); border-radius:12px; padding:12px 14px; color:var(--text2); font-size:13px; }
 code { background:var(--surface2); border:1px solid var(--border); padding:1px 6px; border-radius:6px; font-size:12.5px; word-break:break-all; }
 ol.steps li { margin-bottom:8px; }
-.advice { padding:12px 0; border-bottom:1px solid var(--border); }
+.advice { padding:9px 0; border-bottom:1px solid var(--border); }
 .advice:last-child { border-bottom:0; padding-bottom:0; } .advice:first-child { padding-top:0; }
 .advice .head { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--muted); }
-.advice .hl { font-weight:600; white-space:pre-line; margin:7px 0 4px; }
-.advice .tx { color:var(--text2); white-space:pre-line; }
+.advice .hl { font-weight:600; white-space:pre-line; margin:5px 0 3px; font-size:13px; }
+.advice .tx { color:var(--text2); white-space:pre-line; font-size:13px; line-height:1.4; }
 .advice .q { font-style:italic; color:var(--muted); margin-top:6px; }
 .check { display:flex; gap:9px; align-items:flex-start; font-size:13px; font-weight:500; color:var(--text); margin:0; cursor:pointer; }
 .check input { width:auto; margin-top:3px; flex:none; }
-.actions { margin-top:18px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.actions { margin-top:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 .msg-bad { color:var(--bad); font-size:13px; } .msg-ok { color:var(--good); font-size:13px; }
 .contact { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
 .contact span { flex:1; color:var(--text2); }
 
 /* ---------- nutrition ---------- */
-.kcal-hero { display:grid; grid-template-columns:minmax(260px,1fr) 2fr; gap:18px; margin-top:18px; }
+.kcal-hero { display:grid; grid-template-columns:minmax(260px,1fr) 2fr; gap:18px; margin-top:14px; }
 .kcal-big { background:linear-gradient(160deg,var(--accent-soft),var(--surface)); display:flex; flex-direction:column; justify-content:center; }
 .kcal-big .num { font-size:60px; font-weight:750; letter-spacing:-.03em; line-height:1.05; margin:6px 0 2px; }
 .kcal-big .num small { font-size:20px; font-weight:600; color:var(--muted); margin-left:6px; letter-spacing:0; }
@@ -190,6 +197,33 @@ ol.steps li { margin-bottom:8px; }
 .plate > div { background:var(--surface2); border-radius:12px; padding:12px 14px; }
 .plate b { display:block; margin-bottom:2px; } .plate span { color:var(--text2); font-size:13px; }
 .plate .pct { float:right; font-size:20px; font-weight:750; color:var(--accent); }
+/* ---------- compact (all tabs) ---------- */
+.card { padding:14px 16px; }
+.card + .card, .stack > * + * { margin-top:14px; }
+.card-h { margin-bottom:10px; }
+.form { gap:10px 14px; }
+th, td { padding:6px 9px; }
+.kv div { padding:6px 0; }
+.method li { margin-bottom:5px; font-size:13px; }
+.grid.g2 { gap:14px; }
+.chart-box { height:230px; }
+.charts { grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; }
+.kcal-hero { gap:14px; }
+.kcal-big .num { font-size:44px; }
+.plate { gap:10px; } .plate > div { padding:9px 12px; }
+details.more > summary { cursor:pointer; color:var(--accent); font-weight:600; font-size:13px; list-style:none; }
+details.more > summary::-webkit-details-marker { display:none; }
+details.more > summary::before { content:'▸ '; } details.more[open] > summary::before { content:'▾ '; }
+details.more > :not(summary) { margin-top:10px; }
+#v-settings:not([hidden]) { display:grid; grid-template-columns:repeat(auto-fit,minmax(430px,1fr)); gap:14px; align-items:start; }
+#v-settings > .card { margin-top:0; }
+@media (max-width:520px) { #v-settings:not([hidden]) { grid-template-columns:1fr; } }
+.hl-row { background:var(--accent-soft); } .hl-row td:first-child { font-weight:700; }
+.hint.opt { color:var(--accent); font-weight:600; }
+.kpi .tgt { font-size:11.5px; font-weight:650; color:var(--accent); margin-top:2px; }
+.kpi .tgt span { font-weight:500; color:var(--text2); } .kpi .tgt.hit { color:var(--good); }
+.g-tgt { font-size:11px; font-weight:650; color:var(--accent); margin-left:8px; white-space:nowrap; }
+.g-ref { top:-5px; } .g-ref i { width:3px; height:18px; left:-1px; background:var(--accent); opacity:.95; }
 @media (max-width:860px) { .kcal-hero { grid-template-columns:1fr; } }
 @media (max-width:860px) { .hero { grid-template-columns:1fr; } .charts { grid-template-columns:1fr; } .status span.t { display:none; } }
 @media (max-width:560px) { .top-in { flex-wrap:wrap; gap:10px; } .tabs { order:3; width:100%; margin:0; } main { padding:16px 14px 50px; } .live .num { font-size:52px; } .chart-box { height:240px; } }
@@ -227,18 +261,19 @@ ol.steps li { margin-bottom:8px; }
     <div class="kpis" id="kpis"></div>
   </div>
 
-  <div class="card" id="coachCard" style="margin-top:18px">
+  <div class="card" id="coachCard">
     <div class="card-h"><div><h2>Coach</h2><p class="sub" id="coachSub">Advice for today from what you have eaten and your weight trend</p></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" id="coachDay">Today's advice</button><button class="btn ghost" id="coachWeek">Weekly review</button></div></div>
     <div id="coachFeed"></div>
   </div>
 
-  <div class="card" style="margin-top:18px">
-    <div class="card-h"><div><h2>Where you stand</h2><p class="sub" id="standSub">Your latest reading against scientific reference ranges</p></div></div>
-    <div id="gauges"></div>
+  <div class="cols">
+    <div class="card">
+      <div class="card-h"><div><h2>Where you stand</h2><p class="sub" id="standSub">Your latest reading against scientific reference ranges</p></div></div>
+      <div id="gauges"></div>
+    </div>
+    <div class="card"><div class="card-h"><div><h2>Goals</h2><p class="sub">Progress and projection from your recent trend</p></div></div><div id="goal"></div></div>
   </div>
-
-  <div class="card"><div class="card-h"><div><h2>Goals</h2><p class="sub">Progress and projection based on your recent trend</p></div></div><div id="goal"></div></div>
 </section>
 
 <!-- ============ TRENDS ============ -->
@@ -254,19 +289,19 @@ ol.steps li { margin-bottom:8px; }
     <div class="card"><div class="card-h"><div><h2>BMI</h2><p class="sub">Shaded = healthy (18.5–25)</p></div></div><div class="chart-box"><canvas id="cB"></canvas></div></div>
     <div class="card"><div class="card-h"><div><h2>Body water</h2><p class="sub">Shaded = typical range</p></div></div><div class="chart-box"><canvas id="cH"></canvas></div></div>
   </div>
-  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>Statistics</h2><p class="sub">Summary over the full history, plus changes versus earlier readings</p></div></div><div class="scroll" id="stats"></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><div><h2>Statistics</h2><p class="sub">Summary over the full history, plus changes versus earlier readings</p></div></div><div class="scroll" id="stats"></div></div>
 </section>
 
 <!-- ============ ANALYSIS ============ -->
 <section class="view" id="v-analysis" hidden>
-  <div class="card" style="margin-bottom:18px"><div class="card-h"><div><h2>Recommended weight for your height</h2><p class="sub" id="recSub">What major health authorities and research suggest, compared with you today</p></div></div>
+  <div class="card" style="margin-bottom:14px"><div class="card-h"><div><h2>Recommended weight for your height</h2><p class="sub" id="recSub">What major health authorities and research suggest, compared with you today</p></div></div>
     <div class="scroll" id="rec"></div></div>
   <div class="grid g2">
     <div class="card"><div class="card-h"><div><h2>Composition indices</h2><p class="sub">Latest reading, height-adjusted</p></div></div><div class="kv" id="indices"></div></div>
     <div class="card"><div class="card-h"><div><h2>Ideal body weight</h2><p class="sub">Classic height-based formulas for your height and sex</p></div></div><div class="kv" id="ideal"></div></div>
   </div>
-  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>Daily energy needs</h2><p class="sub">BMR (Mifflin–St Jeor) × activity factor</p></div></div><div class="scroll" id="energy"></div></div>
-  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>How these numbers are calculated</h2></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><div><h2>Daily energy needs</h2><p class="sub">BMR (Mifflin–St Jeor) × activity factor</p></div></div><div class="scroll" id="energy"></div></div>
+  <div class="card"><details class="more"><summary>How these numbers are calculated</summary>
     <ul class="method" style="margin:0;padding-left:18px">
       <li><b>BMI</b> = weight ÷ height². Classes follow WHO (18.5 / 25 / 30 / 35).</li>
       <li><b>Body fat %</b> = 1.20·BMI + 0.23·age − 10.8·(male) − 5.4 (Deurenberg et al., 1991). Typical error against DXA is ±4–5 percentage points; it can't see whether you carry more muscle than average.</li>
@@ -277,7 +312,7 @@ ol.steps li { margin-bottom:8px; }
       <li><b>Fat categories</b>: ACE ranges; healthy bands: Gallagher et al. (2000), by age and sex.</li>
       <li>The scale's raw electrical impedance is stored but <b>not</b> used, because its vendor algorithm is unpublished.</li>
     </ul>
-    <div class="callout" style="margin-top:14px">Informational only, not medical advice. Day-to-day weight swings of 1–2 kg from water and food are normal, so judge progress by the trend rather than single readings.</div>
+    <div class="callout" style="margin-top:14px">Informational only, not medical advice. Day-to-day weight swings of 1–2 kg from water and food are normal, so judge progress by the trend rather than single readings.</div></details>
   </div>
 </section>
 
@@ -305,7 +340,7 @@ ol.steps li { margin-bottom:8px; }
       <input id="impFile" type="file" accept=".csv,text/csv"><div id="impMsg" class="hint"></div>
       <div style="margin-top:16px"><a href="/api/export.csv"><button class="btn ghost" type="button">Export all as CSV</button></a></div></div>
   </div>
-  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>All readings</h2><p class="sub" id="histCount"></p></div></div><div class="scroll" id="hist"></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><div><h2>All readings</h2><p class="sub" id="histCount"></p></div></div><div class="scroll" id="hist"></div></div>
 </section>
 
 <!-- ============ SETTINGS ============ -->
@@ -319,7 +354,7 @@ ol.steps li { margin-bottom:8px; }
       <div><label for="p_target_fat_pct">Target body fat (%)</label><input id="p_target_fat_pct" type="number" step="0.1" inputmode="decimal"><div class="hint" id="h_f"></div></div>
       <div><label for="p_target_date">Target date (optional)</label><input id="p_target_date" type="date"></div>
     </div>
-    <div style="margin-top:18px;display:flex;gap:12px;align-items:center"><button class="btn" id="saveProfile">Save changes</button><span id="saved" class="pos"></span></div>
+    <div style="margin-top:14px;display:flex;gap:12px;align-items:center"><button class="btn" id="saveProfile">Save changes</button><span id="saved" class="pos"></span></div>
   </div>
   <div class="card" id="tgCard"><div class="card-h"><div><h2>Telegram bot</h2><p class="sub">Send a photo of your meal to your bot to log calories and macros. Changes apply immediately.</p></div><span class="chip" id="tgState">…</span></div>
     <div class="form">
@@ -344,6 +379,7 @@ ol.steps li { margin-bottom:8px; }
     <div class="actions"><button class="btn" id="aiSave">Save</button><button class="btn ghost" id="aiTest">Test connection</button><span id="aiMsg"></span></div>
   </div>
   <div class="card"><div class="card-h"><div><h2>Apple Health</h2><p class="sub">Health can only be written by an app on your iPhone, so a Shortcut pulls new readings from here.</p></div></div>
+    <details class="more"><summary>Shortcut setup steps and token</summary>
     <ol class="steps" style="margin:0;padding-left:18px">
       <li>Start the server with <code>--lan</code> and use your Mac's name or IP in place of <code>YOUR-MAC</code>.</li>
       <li>In Shortcuts: <b>Get Contents of URL</b> → <code id="pendUrl"></code></li>
@@ -351,7 +387,7 @@ ol.steps li { margin-bottom:8px; }
       <li>After the loop: <b>Get Contents of URL</b> → <code id="ackUrl"></code> with method POST and a JSON body <code>{"ids":[…]}</code> of the item ids (or add <code>&amp;ids=1,2,3</code> to the URL).</li>
       <li>Optionally add a Personal Automation to run it daily or when you open Health.</li>
     </ol>
-    <div class="callout" style="margin-top:14px">The token is the only protection on this feed. Keep it private and use it on your home network only. Token: <code id="tok"></code></div>
+    <div class="callout" style="margin-top:14px">The token is the only protection on this feed. Keep it private and use it on your home network only. Token: <code id="tok"></code></div></details>
   </div>
 </section>
 </main>
@@ -432,6 +468,16 @@ function spark(key) {
   return `<svg viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><polyline points="${d}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
 }
 const KPIS = [['weight', 'Weight', 'kg', 2, -1], ['bmi', 'BMI', '', 1, -1], ['fat_pct', 'Body fat', '%', 1, -1], ['lean_kg', 'Lean mass', 'kg', 1, 1], ['muscle_kg', 'Muscle (est.)', 'kg', 1, 1], ['water_pct', 'Body water', '%', 1, 1]];
+const zoneOf = (v, zones) => v == null || !zones || !zones.length ? null :
+  (zones.find(z => v >= z.from && v < z.to) || (v >= zones[zones.length - 1].to ? zones[zones.length - 1] : zones[0]));
+function kpiZone(k, a) {
+  const R = S.ref; if (!R || !hM()) return null;
+  if (k === 'weight' || k === 'bmi') return zoneOf(a.bmi, R.bmi_zones);
+  if (k === 'fat_pct') return zoneOf(a.fat_pct, R.fat_zones);
+  if (k === 'lean_kg' || k === 'muscle_kg') return zoneOf(a.ffmi, R.ffmi_zones);
+  if (k === 'water_pct' && a.water_pct != null) { const [l, h] = R.water_range; return a.water_pct < l ? { label: 'Low', cls: 'z4' } : a.water_pct > h ? { label: 'High', cls: 'z1' } : { label: 'Typical', cls: 'z2' }; }
+  return null;
+}
 function renderKpis() {
   const R = S.readings;
   if (!R.length) { $('kpis').innerHTML = '<div class="card empty" style="grid-column:1/-1">No readings yet. Step on the scale and your first measurement will appear here.</div>'; return; }
@@ -439,23 +485,28 @@ function renderKpis() {
   $('kpis').innerHTML = KPIS.map(([k, l, u, dp, good]) => {
     const d = p && a[k] != null && p[k] != null ? a[k] - p[k] : null;
     const cls = d == null || Math.abs(d) < 0.005 ? 't2' : d * good > 0 ? 'pos' : 'neg';
-    return `<div class="kpi"><div class="l">${l}</div><div class="v">${fmt(a[k], dp)}<small>${u}</small></div><div class="d ${cls}">${d == null ? '&nbsp;' : sgn(d, dp) + ' since last'}</div>${spark(k)}</div>`;
+    const z = kpiZone(k, a);
+    const tg = k === 'weight' ? tgtW() : k === 'fat_pct' ? tgtF() : null;
+    let tline = '';
+    if (tg && a[k] != null) {
+      const dd = a[k] - tg, hit = Math.abs(dd) <= 0.5, def = isDefault(k === 'weight' ? 'target_weight' : 'target_fat_pct');
+      tline = `<div class="tgt ${hit ? 'hit' : ''}">🎯 ${fmt(tg, 1)}${k === 'weight' ? ' kg' : '%'} <span>${def ? 'optimal' : 'target'} · ${hit ? 'reached' : sgn(-dd, 1) + ' to go'}</span></div>`;
+    }
+    return `<div class="kpi"${z ? ` data-z="${z.cls}" style="--kz:var(--${z.cls})"` : ''}><div class="l">${l}${z ? `<span class="chip ${z.cls}">${z.label}</span>` : ''}</div><div class="v">${fmt(a[k], dp)}<small>${u}</small></div><div class="d ${cls}">${d == null ? '&nbsp;' : sgn(d, dp) + ' since last'}</div>${tline}${spark(k)}</div>`;
   }).join('');
 }
 
 /* ---------------- range gauges ---------------- */
-function gauge({ name, value, unit = '', dp = 1, min, max, zones, refs = [], ticks = null, note = '', verdict = true }) {
+function gauge({ name, value, unit = '', dp = 1, min, max, zones, refs = [], note = '', verdict = true, tgt = '' }) {
   const pct = v => Math.max(0, Math.min(100, (v - min) / (max - min) * 100));
   const z = zones.find(z => value >= z.from && value < z.to) || (value >= max ? zones[zones.length - 1] : zones[0]);
-  const segs = zones.map(z => `<div class="g-seg ${z.cls}" style="left:${pct(z.from)}%;width:${pct(z.to) - pct(z.from)}%" title="${z.label}"></div>`).join('');
-  const refEls = refs.map(r => `<div class="g-ref" style="left:${pct(r.v)}%"><i></i><b>${r.label}</b></div>`).join('');
-  const tk = (ticks || [...new Set(zones.flatMap(z => [z.from, z.to]))]).map(v => `<span style="left:${pct(v)}%">${+v.toFixed(1)}</span>`).join('');
-  const legend = zones.map(z => `<span><i class="g-seg ${z.cls}" style="position:static;display:inline-block"></i>${z.label}</span>`).join('');
-  return `<div class="gauge"><div class="g-head"><span class="g-name">${name}</span>
+  const segs = zones.map(z => `<div class="g-seg ${z.cls}" style="left:${pct(z.from)}%;width:${pct(z.to) - pct(z.from)}%" title="${z.label}: ${+z.from.toFixed(1)}–${+z.to.toFixed(1)}"></div>`).join('');
+  const refEls = refs.map(r => `<div class="g-ref" style="left:${pct(r.v)}%" title="${r.label}"><i></i></div>`).join('');
+  const tip = note.replace(/<[^>]+>/g, '').replace(/"/g, '&quot;');
+  return `<div class="gauge"><div class="g-head"><span class="g-name">${name}${tgt ? `<span class="g-tgt">🎯 ${tgt}</span>` : ''}</span>
     <span class="g-val">${fmt(value, dp)}<small>${unit}</small>${verdict ? `<span class="chip ${z.cls}">${z.label}</span>` : ''}</span></div>
-    <div class="g-track">${segs}${refEls}<div class="g-mark" style="left:${pct(value)}%"><div class="pin"></div><div class="bub">${fmt(value, dp)}${unit ? ' ' + unit : ''}</div></div></div>
-    <div class="g-ticks" style="margin-top:${refs.length ? 22 : 6}px">${tk}</div>
-    <div class="g-legend">${legend}</div>${note ? `<div class="g-note">${note}</div>` : ''}</div>`;
+    <div class="g-track">${segs}${refEls}<div class="g-mark" style="left:${pct(value)}%"><div class="pin"></div></div></div>
+    ${note ? `<div class="g-note" title="${tip}">${note}</div>` : ''}</div>`;
 }
 
 function renderGauges() {
@@ -470,13 +521,13 @@ function renderGauges() {
               `Within your healthy range of ${hl}–${hh} kg. ${Math.abs(toOpt) < 0.5 ? 'You are at your optimal weight.' : (toOpt > 0 ? toOpt.toFixed(1) + ' kg above' : (-toOpt).toFixed(1) + ' kg below') + ' your optimal weight of ' + opt.weight + ' kg.'}`;
   const wRefs = [{ v: opt.weight, label: 'optimal ' + opt.weight }];
   if (pr.target_weight && Math.abs(pr.target_weight - opt.weight) > 1) wRefs.push({ v: pr.target_weight, label: 'target ' + pr.target_weight });
-  let html = gauge({ name: 'Weight', value: a.weight, unit: 'kg', dp: 2, min: bmiKg(15), max: bmiKg(40), zones: wZones, refs: wRefs, note: wNote });
+  let html = gauge({ name: 'Weight', value: a.weight, unit: 'kg', dp: 2, min: bmiKg(15), max: bmiKg(40), zones: wZones, refs: wRefs, note: wNote, tgt: `${tgtW()} kg ${isDefault('target_weight') ? 'optimal' : 'target'}` });
   // 2) BMI
-  html += gauge({ name: 'Body Mass Index', value: a.bmi, min: 15, max: 40, zones: ref.bmi_zones, refs: [{ v: 22, label: 'optimal 22' }], note: 'WHO classification. BMI ignores muscle mass, so read it together with body fat.' });
+  html += gauge({ name: 'Body Mass Index', value: a.bmi, min: 15, max: 40, zones: ref.bmi_zones, refs: [{ v: 22, label: 'optimal 22' }], tgt: '22 optimal', note: 'WHO classification. BMI ignores muscle mass, so read it together with body fat.' });
   // 3) body fat
   const fz = ref.fat_zones, [fl, fh] = opt.fat_pct_range;
   const fMin = fz[0].from, fMax = fz[fz.length - 1].to;
-  html += gauge({ name: 'Body fat (estimate)', value: a.fat_pct, unit: '%', min: fMin, max: fMax, zones: fz, refs: [{ v: opt.fat_pct, label: 'optimal ' + opt.fat_pct }],
+  html += gauge({ name: 'Body fat (estimate)', value: a.fat_pct, unit: '%', min: fMin, max: fMax, zones: fz, refs: [{ v: opt.fat_pct, label: 'optimal ' + opt.fat_pct }], tgt: `${tgtF()}% ${isDefault('target_fat_pct') ? 'optimal' : 'target'}`,
     note: `Healthy range for your age and sex: <b>${fl}–${fh}%</b> (Gallagher 2000). ${a.fat_pct > fh ? 'You are ' + (a.fat_pct - fh).toFixed(1) + ' points above it, ≈ ' + ((a.fat_pct - fh) / 100 * a.weight).toFixed(1) + ' kg of fat.' : a.fat_pct < fl ? 'You are below it.' : 'You are within it.'}` });
   // 4) body water
   const [wl, wh] = ref.water_range;
@@ -503,28 +554,26 @@ function slope(R, key, days) {
 function goalRow({ title, isOpt, cur, tgt, start, unit, dp, key, tdate }) {
   const R = S.readings, left = cur - tgt, sl = slope(R, key, 30) ?? slope(R, key, 90);
   const total = start - tgt, done = Math.abs(total) < 1e-9 ? 1 : (start - cur) / total, p = Math.max(0, Math.min(1, done));
-  let eta = 'Not enough data yet (needs about 3 readings over 2+ days)', etaDate = '—';
-  if (Math.abs(left) < (key === 'weight' ? 0.2 : 0.3)) { eta = 'Target reached 🎯'; etaDate = 'Reached'; }
-  else if (sl && left * sl < 0) { const days = left / -sl; etaDate = fdate(last().ts + days * DAY); eta = `${Math.round(days)} days at the current pace`; }
-  else if (sl) { eta = 'Your trend is moving away from the target'; }
+  let eta = 'Needs ~3 readings over 2+ days', etaDate = '—', st = { cls: '', label: 'Need data', bar: '' };
+  if (Math.abs(left) < (key === 'weight' ? 0.2 : 0.3)) { eta = 'Target reached 🎯'; etaDate = 'Reached'; st = { cls: 'z2', label: 'Reached', bar: 'good' }; }
+  else if (sl && left * sl < 0) { const days = left / -sl; etaDate = fdate(last().ts + days * DAY); eta = `${Math.round(days)} days at this pace`; st = { cls: 'z2', label: 'On track', bar: 'good' }; }
+  else if (sl) { eta = 'Trend is moving away from the target'; st = { cls: 'z5', label: 'Off track', bar: 'bad' }; }
   let need = '';
   if (tdate && Math.abs(left) > 0.2) {
     const wk = (new Date(tdate).getTime() / 1000 - last().ts) / DAY / 7;
-    need = wk > 0 ? `<div class="fact"><div class="l">Needed for ${tdate}</div><div class="v">${sgn(-left / wk, 2)} ${unit}/week</div></div>` : '';
+    need = wk > 0 ? `<span><span class="l">Need for ${tdate}</span><b>${sgn(-left / wk, 2)} ${unit}/wk</b></span>` : '';
   }
-  return `<div class="goal-row"><div class="goal-top"><b>${title}${isOpt ? ' <span class="chip">optimal</span>' : ''}</b>
-    <span class="t2">${fmt(cur, dp)} → <b>${fmt(tgt, dp)} ${unit}</b> · ${Math.abs(left).toFixed(1)} ${unit} ${left > 0 ? 'to lose' : 'to gain'}</span></div>
-    <div class="pbar" role="progressbar" aria-valuenow="${(p * 100).toFixed(0)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${p * 100}%"></i></div>
-    <div class="muted" style="font-size:12.5px">${(p * 100).toFixed(0)}% of the way from your first reading (${fmt(start, dp)} ${unit})</div>
-    <div class="facts"><div class="fact"><div class="l">Current pace</div><div class="v">${sl != null ? sgn(sl * 7, 2) + ' ' + unit + '/week' : '—'}</div></div>
-    <div class="fact"><div class="l">Projected date</div><div class="v">${etaDate}</div></div>
-    <div class="fact"><div class="l">Outlook</div><div class="v" style="font-weight:600">${eta}</div></div>${need}</div></div>`;
+  return `<div class="goal-row"><div class="goal-top"><b>${title}${isOpt ? ' <span class="chip">optimal</span>' : ''}</b><span class="chip ${st.cls}">${st.label}</span></div>
+    <div class="t2 goal-line">${fmt(cur, dp)} → <b>${fmt(tgt, dp)} ${unit}</b> · ${Math.abs(left).toFixed(1)} ${unit} ${left > 0 ? 'to lose' : 'to gain'} · ${(p * 100).toFixed(0)}% done</div>
+    <div class="pbar ${st.bar}" role="progressbar" aria-valuenow="${(p * 100).toFixed(0)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${p * 100}%"></i></div>
+    <div class="goal-facts"><span><span class="l">Pace</span><b>${sl != null ? sgn(sl * 7, 2) + ' ' + unit + '/wk' : '—'}</b></span>
+    <span><span class="l">ETA</span><b>${etaDate}</b></span><span><span class="l">Outlook</span><b>${eta}</b></span>${need}</div></div>`;
 }
 function renderGoal() {
   if (!S.readings.length) { $('goal').innerHTML = '<div class="empty">Goals appear after your first reading.</div>'; return; }
   const R = S.readings, a = last(), P = S.profile; let h = '';
   const hr = S.healthy_range, op = S.optimal;
-  if (op && hr) h += `<div class="callout" style="margin-bottom:18px">For ${S.profile.height_cm} cm: healthy <b>${hr[0]}–${hr[1]} kg</b> · optimal <b>${op.weight} kg</b> (BMI 22) · body fat <b>${op.fat_pct_range[0]}–${op.fat_pct_range[1]}%</b></div>`;
+  if (op && hr) h += `<div class="goal-note">For ${S.profile.height_cm} cm: healthy <b>${hr[0]}–${hr[1]} kg</b> · optimal <b>${op.weight} kg</b> (BMI 22) · body fat <b>${op.fat_pct_range[0]}–${op.fat_pct_range[1]}%</b></div>`;
   if (tgtW()) h += goalRow({ title: 'Weight goal', isOpt: isDefault('target_weight'), cur: a.weight, tgt: tgtW(), start: R[0].weight, unit: 'kg', dp: 1, key: 'weight', tdate: P.target_date });
   if (tgtF() && a.fat_pct != null) h += goalRow({ title: 'Body fat goal', isOpt: isDefault('target_fat_pct'), cur: a.fat_pct, tgt: tgtF(), start: R[0].fat_pct, unit: '%', dp: 1, key: 'fat_pct', tdate: P.target_date });
   $('goal').innerHTML = h || '<div class="empty">Set your height in Settings to enable goals.</div>';
@@ -553,11 +602,11 @@ function renderRecommended() {
   const a = S.readings.length ? last() : null, ideal = Object.values(S.ref.ideal);
   const im = ideal.reduce((s, v) => s + v, 0) / ideal.length;
   const rows = [
+    ['Optimal used in this app', 'BMI 22 (middle of healthy)', S.optimal.weight, S.optimal.weight, 'Mid-point of the WHO range'],
     ['WHO — healthy weight', 'BMI 18.5–24.9 (adults)', bmiKg(18.5), bmiKg(24.9), 'World Health Organization'],
     ['CDC / NIH — healthy weight', 'BMI 18.5–24.9', bmiKg(18.5), bmiKg(24.9), 'US CDC & National Institutes of Health'],
     ['Lowest mortality (large cohorts)', 'BMI 22.5–25', bmiKg(22.5), bmiKg(25), 'Prospective Studies Collaboration, Lancet 2009'],
     ['Lowest mortality (never-smokers)', 'BMI 20–25', bmiKg(20), bmiKg(25), 'Global BMI Mortality Collaboration, Lancet 2016'],
-    ['Optimal used in this app', 'BMI 22 (middle of healthy)', S.optimal.weight, S.optimal.weight, 'Mid-point of the WHO range'],
     ['Ideal-weight formulas', 'Devine, Robinson, Miller, Hamwi (range of the four)', Math.min(...ideal), Math.max(...ideal), 'Height-based clinical formulas'],
   ];
   const status = (lo, hi) => {
@@ -569,7 +618,7 @@ function renderRecommended() {
   };
   const f = (lo, hi) => lo === hi || Math.abs(hi - lo) < 0.05 ? `<b>${hi.toFixed(1)} kg</b>` : `<b>${lo.toFixed(1)} – ${hi.toFixed(1)} kg</b>`;
   $('rec').innerHTML = '<table><thead><tr><th>Source</th><th>Criterion</th><th>Recommended weight</th><th>You</th></tr></thead><tbody>' +
-    rows.map(([n, c, lo, hi, src]) => `<tr title="${src}"><td>${n}<div class="muted" style="font-size:11.5px">${src}</div></td><td class="t2">${c}</td><td>${f(lo, hi)}</td><td>${status(lo, hi)}</td></tr>`).join('') +
+    rows.map(([n, c, lo, hi, src]) => `<tr title="${src}"${n.startsWith('Optimal') ? ' class="hl-row"' : ''}><td>${n === 'Optimal used in this app' ? '🎯 ' + (isDefault('target_weight') ? 'Your target (optimal)' : n) : n}</td><td class="t2">${c}</td><td>${f(lo, hi)}</td><td>${status(lo, hi)}</td></tr>`).join('') +
     `</tbody></table><p class="hint" style="margin-top:10px">For adults 18+ at ${S.profile.height_cm} cm. WHO classes: overweight BMI ≥ 25 (≥ ${bmiKg(25).toFixed(1)} kg), obesity BMI ≥ 30 (≥ ${bmiKg(30).toFixed(1)} kg). BMI does not distinguish muscle from fat; some groups (e.g. people of Asian descent) have lower WHO action thresholds.</p>`;
 }
 function renderAnalysis() {
@@ -600,7 +649,7 @@ function renderNutrition() {
     const why = n === undefined ? 'The AtomHealth server is running an older version without this feature. Restart it to enable this tab.'
       : !S.readings.length ? 'No weight reading yet. Step on the scale or add one in History; your weight is the one input that does not come from Settings.'
       : 'Set your height in Settings.';
-    box.innerHTML = `<div class="card empty" style="margin-top:18px">${why}</div>`; return;
+    box.innerHTML = `<div class="card empty" style="margin-top:14px">${why}</div>`; return;
   }
   const adj = n.adjust, gp = n.goal === 'maintain' ? 'Maintenance' : (adj < 0 ? 'Deficit' : 'Surplus');
   const eta = n.weeks ? `≈ ${n.weeks} weeks` + (n.weeks > 8 ? ` (${(n.weeks / 4.345).toFixed(1)} months)` : '') : '—';
@@ -622,7 +671,7 @@ function renderNutrition() {
     </div>
   </div>
   ${n.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join('')}
-  <div class="grid g2" style="margin-top:18px">
+  <div class="grid g2" style="margin-top:14px">
     <div class="card"><div class="card-h"><div><h2>Macronutrients</h2><p class="sub">Protein ${n.protein_per_kg} g per kg of ${n.protein_basis_kg} kg · fat and carbohydrate share the rest</p></div></div>
       <div class="macro-bar" role="img" aria-label="Macro split">${n.macros.map(m => `<i class="m-${m.key}" style="width:${m.pct}%"></i>`).join('')}</div>
       <table><thead><tr><th></th><th>Per day</th><th>Energy</th><th>Share</th></tr></thead><tbody>${macroRows}</tbody></table></div>
@@ -635,10 +684,10 @@ function renderNutrition() {
         <div>Sodium (under)</div><div>${L.sodium_mg} mg · 5 g salt</div>
       </div></div>
   </div>
-  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>How to split your day</h2><p class="sub">A simple pattern. Move calories between meals to suit your schedule.</p></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><div><h2>How to split your day</h2><p class="sub">A simple pattern. Move calories between meals to suit your schedule.</p></div></div>
     <div class="plate">${n.meals.map((m, i) => `<div><span class="pct">${m.pct}%</span><b>${m.label}</b><span><b style="display:inline;color:var(--text)">${m.kcal} kcal</b><br>${['Protein (eggs, yoghurt, cottage cheese) + wholegrain + fruit', 'Half veg, a palm of protein, a fist of whole grains or legumes', 'Like lunch, lighter on starch; finish 2–3 h before bed', 'Fruit, nuts, yoghurt or vegetables with hummus'][i]}</span></div>`).join('')}</div>
   </div>
-  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>Healthy eating basics</h2></div></div>
+  <div class="card" style="margin-top:14px"><details class="more"><summary>Healthy eating basics and how the plan is calculated</summary>
     <ul class="method" style="margin:0;padding-left:18px">
       <li><b>Plate:</b> half vegetables and fruit, a quarter lean protein (fish, poultry, eggs, legumes, tofu), a quarter whole grains. Use olive or rapeseed oil, nuts and seeds for fats.</li>
       <li><b>Eat mostly whole foods</b>; limit processed meat, sugary drinks, sweets and alcohol.</li>
@@ -646,7 +695,7 @@ function renderNutrition() {
       <li><b>Protein</b> at every meal helps hold on to muscle while losing weight; strength training twice a week amplifies it.</li>
       <li><b>Pace:</b> 0.25–0.75 kg/week (≤ 1% of body weight) is sustainable. Judge progress by the 2–3 week trend, then adjust calories by 100–150 kcal.</li>
     </ul>
-    <div class="callout" style="margin-top:14px">Calculation: BMR = Mifflin–St Jeor (1990) with your age, sex, height and weight, × activity factor. Goal adds or removes ${'7700'} kcal per kg of weight change; deficits are capped at 25% of maintenance and never below 1500 kcal (men) / 1200 kcal (women). Protein follows ISSN/ESPEN ranges (1.2–1.6 g/kg, higher in a deficit, +0.2 g/kg from age 60); fibre 14 g/1000 kcal (IOM); sugar, saturated fat and sodium limits follow WHO. Estimates carry about ±10% individual error. Informational only, not medical advice; see a doctor or dietitian for medical conditions, pregnancy, or if under 18.</div>
+    <div class="callout" style="margin-top:14px">Calculation: BMR = Mifflin–St Jeor (1990) with your age, sex, height and weight, × activity factor. Goal adds or removes ${'7700'} kcal per kg of weight change; deficits are capped at 25% of maintenance and never below 1500 kcal (men) / 1200 kcal (women). Protein follows ISSN/ESPEN ranges (1.2–1.6 g/kg, higher in a deficit, +0.2 g/kg from age 60); fibre 14 g/1000 kcal (IOM); sugar, saturated fat and sodium limits follow WHO. Estimates carry about ±10% individual error. Informational only, not medical advice; see a doctor or dietitian for medical conditions, pregnancy, or if under 18.</div></details>
   </div>`;
 }
 NKEYS.forEach(k => $('n_' + k).onchange = async () => {
@@ -677,25 +726,32 @@ $('impFile').onchange = async e => {
 
 /* ---------------- coach (advice feed on the Overview) ---------------- */
 const KIND = { day: 'Daily advice', week: 'Weekly review', meal: 'Meal tip', ask: 'Question' };
+let coachAll = false;
 function renderCoach() {
   const A = S.advice || { today: [], week: null }, box = $('coachFeed'); box.textContent = '';
   const items = [...A.today]; if (A.week && !items.some(i => i.id === A.week.id)) items.push(A.week);
   if (!items.length) {
-    const e = document.createElement('div'); e.className = 'empty';
-    e.textContent = 'No advice yet today. Tap "Today\'s advice", or log meals in Telegram and a summary arrives automatically in the evening.';
+    const e = document.createElement('div'); e.className = 'empty'; e.style.padding = '14px';
+    e.textContent = 'No advice yet today. Tap "Today\'s advice", or log meals in Telegram and a summary arrives in the evening.';
     box.append(e); return;
   }
-  for (const i of items) {
+  items.forEach((i, n) => {
+    if (n > 0 && !coachAll) return;
     const d = document.createElement('div'); d.className = 'advice';
     const h = document.createElement('div'); h.className = 'head';
     const chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = KIND[i.kind] || i.kind;
     const t = document.createElement('span'); t.textContent = i.kind === 'week' && !A.today.includes(i) ? fdt(i.ts) : new Date(i.ts * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    h.append(chip, t); if (!i.used_llm) { const f = document.createElement('span'); f.textContent = '· basic tips (AI model was offline)'; h.append(f); }
+    h.append(chip, t); if (!i.used_llm) { const f = document.createElement('span'); f.textContent = '· basic tips (AI offline)'; h.append(f); }
     d.append(h);
     if (i.question) { const q = document.createElement('div'); q.className = 'q'; q.textContent = '“' + i.question + '”'; d.append(q); }
     const hl = document.createElement('div'); hl.className = 'hl'; hl.textContent = i.headline;
     const tx = document.createElement('div'); tx.className = 'tx'; tx.textContent = i.text;
     d.append(hl, tx); box.append(d);
+  });
+  if (items.length > 1) {
+    const b = document.createElement('button'); b.className = 'link'; b.style.marginTop = '6px';
+    b.textContent = coachAll ? 'Show less ▴' : `Show ${items.length - 1} earlier ▾`;
+    b.onclick = () => { coachAll = !coachAll; renderCoach(); }; box.append(b);
   }
 }
 async function askCoach(kind) {
@@ -714,8 +770,12 @@ $('coachDay').onclick = () => askCoach('day'); $('coachWeek').onclick = () => as
 const PKEYS = ['height_cm', 'birthdate', 'sex', 'target_weight', 'target_fat_pct', 'target_date'];
 function fillSettings() {
   for (const k of PKEYS) { const el = $('p_' + k); if (document.activeElement !== el) el.value = S.profile[k] ?? ''; }
-  $('h_w').textContent = S.optimal.weight ? `Empty = optimal (${S.optimal.weight} kg)` : '';
-  $('h_f').textContent = `Empty = optimal (${S.optimal.fat_pct}%)`;
+  const ow = S.optimal.weight, of = S.optimal.fat_pct;
+  $('p_target_weight').placeholder = ow ? ow + ' (optimal)' : ''; $('p_target_fat_pct').placeholder = of ? of + ' (optimal)' : '';
+  $('h_w').className = 'hint' + (S.profile.target_weight ? '' : ' opt');
+  $('h_w').textContent = !ow ? '' : S.profile.target_weight ? `Your own target. Clear it to use the optimal ${ow} kg.` : `🎯 Using the optimal weight, ${ow} kg (BMI 22), until you set your own.`;
+  $('h_f').className = 'hint' + (S.profile.target_fat_pct ? '' : ' opt');
+  $('h_f').textContent = S.profile.target_fat_pct ? `Your own target. Clear it to use the optimal ${of}%.` : `🎯 Using the optimal body fat, ${of}%, until you set your own.`;
   const base = `http://YOUR-MAC:${location.port || 80}/api/health`;
   $('pendUrl').textContent = `${base}/pending?token=${S.health_token}`;
   $('ackUrl').textContent = `${base}/ack?token=${S.health_token}`;
@@ -817,7 +877,7 @@ const bandPlugin = {
 };
 const pts = (key, cutoff) => S.readings.filter(r => r.ts >= cutoff && r[key] != null).map(r => ({ x: r.ts * 1000, y: r[key] }));
 const avg = (p, n = 7) => p.map((q, i) => { const s = p.slice(Math.max(0, i - n + 1), i + 1); return { x: q.x, y: s.reduce((a, b) => a + b.y, 0) / s.length }; });
-const hline = (p, y, label, color) => p.length ? { label, data: [{ x: p[0].x, y }, { x: p[p.length - 1].x, y }], borderColor: color, borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0, order: 5 } : null;
+const hline = (p, y, label, color, w = 1.5) => p.length ? { label, data: [{ x: p[0].x, y }, { x: p[p.length - 1].x, y }], borderColor: color, borderDash: [6, 5], borderWidth: w, pointRadius: 0, order: 5 } : null;
 function mk(id, datasets, { bands, sugMin, sugMax, unit = '' } = {}) {
   const grid = css('--border'), txt = css('--muted');
   if (charts[id]) charts[id].destroy();
@@ -847,12 +907,12 @@ function renderCharts() {
   mk('cW', [
     { label: 'Weight', data: w, borderColor: acc + '55', backgroundColor: acc, pointRadius: w.length > 60 ? 1.5 : 3, pointHoverRadius: 5, borderWidth: 1.2, order: 3 },
     { label: '7-reading average', data: avg(w), borderColor: acc, pointRadius: 0, borderWidth: 2.8, tension: .3, order: 2 },
-    op && hline(w, op.weight, 'Optimal ' + op.weight + ' kg', css('--good')),
+    op && hline(w, op.weight, (isDefault('target_weight') ? 'Target (optimal) ' : 'Optimal ') + op.weight + ' kg', css('--good'), 2.4),
     tw && Math.abs(tw - (op ? op.weight : 0)) > 0.3 && hline(w, tw, 'Target ' + tw + ' kg', css('--z4')),
   ], { bands: hr && [{ from: hr[0], to: hr[1] }], sugMin: Math.min(...(vals.length ? vals : [70]), op ? op.weight : 999) - 2, sugMax: Math.max(...(vals.length ? vals : [90]), op ? op.weight : 0) + 2, unit: ' kg' });
   const f = pts('fat_pct', cutoff);
   mk('cF', [{ label: 'Body fat %', data: f, borderColor: css('--z4'), backgroundColor: css('--z4'), pointRadius: f.length > 60 ? 1.5 : 3, borderWidth: 2.2, tension: .3 },
-    hline(f, tgtF(), 'Target ' + tgtF() + '%', css('--good'))],
+    hline(f, tgtF(), (isDefault('target_fat_pct') ? 'Target (optimal) ' : 'Target ') + tgtF() + '%', css('--good'), 2.4)],
     { bands: op && [{ from: op.fat_pct_range[0], to: op.fat_pct_range[1] }], sugMin: op.fat_pct_range[0] - 2, sugMax: Math.max(op.fat_pct_range[1] + 2, ...f.map(p => p.y)) + 1, unit: '%' });
   mk('cC', [
     { label: 'Lean mass', data: pts('lean_kg', cutoff), borderColor: acc, borderWidth: 2.2, pointRadius: 0, tension: .3 },
@@ -868,7 +928,7 @@ function renderCharts() {
 
 /* ---------------- live stream ---------------- */
 const es = new EventSource('/api/events');
-es.onmessage = e => { const ev = JSON.parse(e.data); if (ev.type === 'advice') { load(); return; } if (S) { S.live = ev; renderLive(ev); } if (ev.type === 'saved') load(); };
+es.onmessage = e => { const ev = JSON.parse(e.data); if (ev.type === 'advice') { load(); return; } if (S && ev.ble !== undefined) { S.live = ev; renderLive(ev); } if (ev.type === 'saved') load(); };
 
 const TABS = ['overview', 'trends', 'analysis', 'nutrition', 'history', 'settings'];
 const fromHash = () => { const h = location.hash.slice(1); return TABS.includes(h) ? h : 'overview'; };
