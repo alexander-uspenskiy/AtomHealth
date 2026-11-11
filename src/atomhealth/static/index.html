@@ -250,6 +250,8 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
 .nlegend i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; }
 .c-low { background:var(--z1); } .c-ok { background:var(--good); } .c-warn { background:var(--z4); } .c-over { background:var(--z6); }
 .stale { background:color-mix(in srgb,var(--z4) 16%,transparent); border-radius:10px; padding:8px 12px; font-size:12.5px; margin-bottom:8px; }
+.nind.idx { margin-top:-2px; } .ni .split { display:flex; height:9px; border-radius:99px; overflow:hidden; margin:7px 0 4px; background:var(--surface); }
+.ni .split i { display:block; height:100%; }
 </style>
 </head>
 <body>
@@ -294,6 +296,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
     <div class="card-h"><div><h2>Today's nutrition</h2><p class="sub" id="todaySub"></p></div>
       <div class="nlegend"><span><i class="c-low"></i>room left</span><span><i class="c-ok"></i>on target</span><span><i class="c-warn"></i>near limit</span><span><i class="c-over"></i>over</span></div></div>
     <div class="nind" id="nind"></div>
+    <div class="nind idx" id="nidx"></div>
     <div class="scroll" id="todayMeals"></div>
   </div>
 
@@ -764,11 +767,33 @@ function renderNind(done) {
       `<div class="d">${left >= 0 ? Math.round(left) + ' ' + u + (kind === 'reach' ? ' to go' : ' left') : Math.round(-left) + ' ' + u + (kind === 'reach' ? ' above goal' : ' over')}</div></div>`;
   }).join('');
 }
+// Indexes: ratios that say more than raw totals (macro split, protein per kg, fibre density, weekly average).
+function renderNidx(done) {
+  const n = S.nutrition, box = $('nidx');
+  if (!n || !n.kcal) { box.innerHTML = ''; return; }
+  const sum = k => done.reduce((a, m) => a + (m[k] || 0), 0), tiles = [];
+  const P = sum('protein_g'), C = sum('carbs_g'), F = sum('fat_g'), mk = 4 * P + 4 * C + 9 * F;
+  const share = mk ? [4 * P / mk, 4 * C / mk, 9 * F / mk].map(x => Math.round(x * 100)) : null;
+  const plan = ['protein', 'carbs', 'fat'].map(k => (n.macros.find(m => m.key === k) || {}).pct || 0);
+  const dev = share ? Math.max(...share.map((x, i) => Math.abs(x - plan[i]))) : 0;
+  tiles.push(`<div class="ni ${share ? (dev <= 5 ? 'ok' : dev <= 10 ? 'warn' : 'over') : 'low'}"><div class="l"><span>Macro split</span><b>${share ? (dev <= 5 ? 'balanced' : dev <= 10 ? 'drifting' : 'off plan') : 'no data'}</b></div>` +
+    `<div class="v">${share ? share.join(' / ') : '—'}<small> % P/C/F</small></div>` +
+    `<div class="split" title="Today">${share ? share.map((x, i) => `<i class="m-${['protein', 'carbs', 'fat'][i]}" style="width:${x}%"></i>`).join('') : ''}</div><div class="d">plan ${plan.join(' / ')} %</div></div>`);
+  const kgT = n.protein_per_kg, kg = n.weight ? P / n.weight : 0, ks = nState(kgT ? kg / kgT : 0, 'reach');
+  tiles.push(`<div class="ni ${ks}"><div class="l"><span>Protein per kg</span><b>${ks === 'ok' ? 'goal met' : ks === 'warn' ? 'almost there' : 'keep going'}</b></div><div class="v">${kg.toFixed(2)}<small> g/kg</small></div><div class="d">target ${kgT} g/kg of ${n.protein_basis_kg} kg</div></div>`);
+  const fd = sum('kcal') ? sum('fiber_g') / sum('kcal') * 1000 : 0, fs = sum('kcal') ? nState(fd / 14, 'reach') : 'low';
+  tiles.push(`<div class="ni ${fs}"><div class="l"><span>Fibre density</span><b>${sum('kcal') ? (fs === 'ok' ? 'good' : fs === 'warn' ? 'fair' : 'low') : 'no data'}</b></div><div class="v">${fd.toFixed(1)}<small> g/1000 kcal</small></div><div class="d">target 14 g/1000 kcal</div></div>`);
+  const since = Date.now() / 1000 - 7 * 86400, days = {};
+  (S.meals || []).filter(m => m.status === 'confirmed' && m.ts >= since).forEach(m => { const d = new Date(m.ts * 1000).toDateString(); days[d] = (days[d] || 0) + m.kcal; });
+  const dv = Object.values(days), avg = dv.length ? dv.reduce((a, b) => a + b, 0) / dv.length : 0, as = dv.length ? nState(avg / n.kcal, 'limit') : 'low';
+  tiles.push(`<div class="ni ${as}"><div class="l"><span>7-day average</span><b>${dv.length ? ({ low: 'under plan', ok: 'on target', warn: 'near limit', over: 'over' })[as] : 'no data'}</b></div><div class="v">${Math.round(avg)}<small> kcal/day</small></div><div class="d">${dv.length} logged day${dv.length === 1 ? '' : 's'} · plan ${n.kcal} kcal</div></div>`);
+  box.innerHTML = tiles.join('');
+}
 function renderToday() {
   const t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const M = (S.meals || []).filter(m => m.ts >= t0 / 1000), done = M.filter(m => m.status === 'confirmed');
   const sum = k => done.reduce((a, m) => a + (m[k] || 0), 0), tgt = S.nutrition && S.nutrition.kcal;
-  renderNind(done);
+  renderNind(done); renderNidx(done);
   $('todaySub').textContent = M.length ? `${Math.round(sum('kcal'))}${tgt ? ' / ' + tgt : ''} kcal saved · P ${Math.round(sum('protein_g'))} g · C ${Math.round(sum('carbs_g'))} g · F ${Math.round(sum('fat_g'))} g` + (M.length > done.length ? ` · ${M.length - done.length} waiting for Save in Telegram` : '') : '';
   $('todayMeals').innerHTML = M.length ? '<table><tbody>' + [...M].reverse().map(m => `<tr><td class="l">${new Date(m.ts * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</td><td class="l"><b>${esc(m.type && m.type !== 'unknown' ? m.type[0].toUpperCase() + m.type.slice(1) : 'Meal')}</b></td>` +
     `<td class="l">${Array.from({ length: Math.min(m.photos, 3) }, (_, i) => `<img class="thumb" loading="lazy" src="/api/food/${m.id}/photo/${i}" alt="">`).join('')}</td><td class="l items">${m.items.map(i => esc(i.name)).join(', ')}</td><td><b>${fmt(m.kcal, 0)}</b> kcal</td><td>${m.status === 'pending' ? '<span class="chip z4">Pending</span>' : ''}</td></tr>`).join('') + '</tbody></table>'
