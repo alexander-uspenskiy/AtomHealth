@@ -333,9 +333,13 @@ def make_app(lan, no_ble):
         return web.FileResponse(STATIC_DIR / "manifest.webmanifest",
                                 headers={"Content-Type": "application/manifest+json"})
 
+    async def favicon(request):
+        return web.FileResponse(STATIC_DIR / "favicon.ico", headers={"Content-Type": "image/x-icon"})
+
     app.add_routes([
         web.static("/assets", STATIC_DIR / "assets"),
         web.get("/manifest.webmanifest", manifest),
+        web.get("/favicon.ico", favicon),
         web.get("/", index), web.get("/api/state", state), web.get("/api/events", events),
         web.post("/api/profile", set_profile), web.post("/api/readings", post_reading),
         web.post("/api/import", import_readings),
