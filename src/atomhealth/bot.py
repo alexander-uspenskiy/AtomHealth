@@ -12,7 +12,9 @@ import time
 
 import aiohttp
 
-from . import food
+from datetime import datetime
+
+from . import advisor, food
 from .llm import LLMError
 
 log = logging.getLogger("atomhealth.bot")
@@ -27,6 +29,9 @@ HELP = ("<b>AtomHealth food bot</b>\n"
         "➕ Send more photos or a note within a few minutes to add them to the same meal.\n"
         "✍️ Or just describe it: “2 eggs and toast”.\n\n"
         "/today – meals and calories so far today\n"
+        "/advice – coaching tip for today\n"
+        "/week – weekly review and calorie-target check\n"
+        "/ask <question> – ask the coach about your diet\n"
         "/undo – discard the last meal\n"
         "/weight – your latest weight\n"
         "/help – this message")
@@ -106,16 +111,19 @@ def render_meal(analysis, status, day_kcal, target):
 
 
 def keyboard(meal_id, status):
-    if status != "pending":
-        return {"inline_keyboard": []}
-    return {"inline_keyboard": [[{"text": "✅ Save", "callback_data": f"save:{meal_id}"},
-                                 {"text": "🗑 Discard", "callback_data": f"del:{meal_id}"}]]}
+    rows = []
+    if status == "pending":
+        rows.append([{"text": "✅ Save", "callback_data": f"save:{meal_id}"},
+                     {"text": "🗑 Discard", "callback_data": f"del:{meal_id}"}])
+    if status != "discarded":
+        rows.append([{"text": "💡 Advice", "callback_data": f"tip:{meal_id}"}])
+    return {"inline_keyboard": rows}
 
 
 class TelegramBot:
     def __init__(self, db, *, cfg, target_kcal, latest_weight, kv_get, kv_set, plan=lambda: {},
-                 api_factory=TgApi, api_base=API):
-        self.db, self.cfg, self.plan = db, cfg, plan
+                 context=lambda meal=None: None, notify=lambda: None, api_factory=TgApi, api_base=API):
+        self.db, self.cfg, self.plan, self.context, self.notify = db, cfg, plan, context, notify
         self.target_kcal, self.latest_weight = target_kcal, latest_weight
         self.kv_get, self.kv_set = kv_get, kv_set
         self.api_factory, self.api_base = api_factory, api_base
@@ -285,7 +293,8 @@ class TelegramBot:
                                           "To use it, add that ID in AtomHealth → Settings → Telegram bot.")
             return
         if text.startswith("/"):
-            return await self._command(chat_id, text.split()[0].split("@")[0].lower(), frm.get("first_name"))
+            head, _, args = text.partition(" ")
+            return await self._command(chat_id, head.split("@")[0].lower(), frm.get("first_name"), args)
         fid = None
         if m.get("photo"):
             fid = m["photo"][-1]["file_id"]
@@ -329,7 +338,35 @@ class TelegramBot:
         lines.append(f"Today so far: {kcal_fmt(eaten)} kcal → {kcal_fmt(abs(left))} {'left' if left >= 0 else 'over'}")
         return "\n".join(lines) + "\n\n" + HELP
 
-    async def _command(self, chat_id, cmd, name=None):
+    async def _coach(self, chat_id, kind, question=None, meal=None, title=None, meal_id=None):
+        """Send an LLM-written report (stats line computed in code + commentary from the model)."""
+        note = await self._send(chat_id, "💭 Thinking…")
+        try:
+            snap = self.context(meal)
+            if snap is None:
+                return await self._edit(chat_id, note["message_id"], "I don't have enough data yet.")
+            r = await advisor.report(kind, snap, question)
+        except LLMError:
+            return await self._edit(chat_id, note["message_id"],
+                                    "⚠️ The AI model isn't reachable right now. Please try again in a minute.")
+        text = (f"{title}\n" if title else "") + esc(r["headline"]) + "\n\n" + esc(r["text"])
+        await self._edit(chat_id, note["message_id"], text)
+        advisor.save_advice(self.db, kind, r, question=question, meal_id=meal_id, source="telegram")
+        self.notify()                                   # lets the dashboard show it right away
+
+    def _meal_analysis(self, meal_id):
+        row = self.db.execute("SELECT raw_json FROM meals WHERE id=?", (meal_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    async def _command(self, chat_id, cmd, name=None, args=""):
+        if cmd == "/advice":
+            return await self._coach(chat_id, "day", title="💡 <b>Today's advice</b>")
+        if cmd == "/week":
+            return await self._coach(chat_id, "week", title="📊 <b>Weekly review</b>")
+        if cmd == "/ask":
+            if not args.strip():
+                return await self._send(chat_id, "Ask me something, e.g. <code>/ask what should I eat for dinner?</code>")
+            return await self._coach(chat_id, "ask", question=args.strip()[:500])
         if cmd == "/start":
             return await self._send(chat_id, self.welcome_text(name))
         if cmd == "/help":
@@ -381,6 +418,12 @@ class TelegramBot:
             mid = int(mid)
         except ValueError:
             return await self.api.call("answerCallbackQuery", callback_query_id=cq["id"])
+        if action == "tip":
+            await self.api.call("answerCallbackQuery", callback_query_id=cq["id"], text="Thinking…")
+            meal = self._meal_analysis(mid)
+            if meal and chat_id:
+                self._spawn(self._coach(chat_id, "meal", meal=meal, meal_id=mid, title="💡 <b>Advice for this meal</b>"))
+            return
         cur = self._status_of(mid)
         if cur != "pending":
             toast = "Already " + (cur or "gone")
@@ -435,6 +478,7 @@ class TelegramBot:
             await asyncio.sleep(SWEEP_EVERY)
             try:
                 await self.sweep()
+                self._scheduled()
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -450,6 +494,26 @@ class TelegramBot:
             if c["auto_save"] and self._status_of(s["meal_id"]) == "pending":
                 food.set_status(self.db, s["meal_id"], "confirmed")
                 await self._refresh_meal_message(chat_id, s["msg_id"], s["meal_id"])
+
+    def _scheduled(self, now=None):
+        """Once a day at the configured time: a daily summary (a weekly review on Sundays)."""
+        c = self.cfg()
+        if not c.get("daily_summary", True):
+            return
+        now = now or datetime.now()
+        if now.strftime("%H:%M") < c.get("summary_time", "21:00"):
+            return
+        key = now.strftime("%Y-%m-%d")
+        if self.kv_get("tg_last_summary") == key:
+            return
+        self.kv_set("tg_last_summary", key)       # first, so a slow model call can never double-send
+        start = food.day_start(now.timestamp())
+        kind = "week" if now.weekday() == 6 else "day"
+        if kind == "day" and not food.meals_between(self.db, start, start + 86400):
+            return                                  # nothing logged today: stay quiet
+        title = "📊 <b>Weekly review</b>" if kind == "week" else "🌙 <b>Daily summary</b>"
+        for uid in c["allowed_ids"]:
+            self._spawn(self._coach(uid, kind, title=title))
 
     async def send_test(self):
         """Message every allowed chat; returns how many were reached."""

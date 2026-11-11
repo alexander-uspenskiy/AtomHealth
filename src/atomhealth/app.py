@@ -20,7 +20,7 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
-from . import bodycomp, bot as tgbot, config, food
+from . import advisor, bodycomp, bot as tgbot, config, food
 from .llm import LLMError
 
 PKG_DIR = Path(__file__).resolve().parent            # src/atomhealth
@@ -56,6 +56,10 @@ CREATE TABLE IF NOT EXISTS meal_items(
   id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
   name TEXT NOT NULL, grams REAL, kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL);
 CREATE INDEX IF NOT EXISTS meals_ts ON meals(ts);
+CREATE TABLE IF NOT EXISTS advice(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, day TEXT NOT NULL, kind TEXT NOT NULL,
+  question TEXT, headline TEXT, text TEXT, used_llm INTEGER DEFAULT 1, meal_id INTEGER, source TEXT);
+CREATE INDEX IF NOT EXISTS advice_day ON advice(day);
 """)
 # meal photos live in the DB as reduced JPEG blobs (one file to back up). Drop an empty pre-release layout.
 if (cols := {r["name"] for r in db.execute("PRAGMA table_info(meal_photos)")}) and "data" not in cols:
@@ -205,7 +209,7 @@ async def state(request):
         "optimal": bodycomp.optimal(prof), "ref": bodycomp.reference(prof),
         "nutrition": bodycomp.nutrition(prof, rows[-1]["weight"] if rows else None),
         "readings": [reading_dict(r, prof) for r in rows],
-        "live": live, "health_token": token(),
+        "live": live, "health_token": token(), "advice": advisor.feed(db),
     })
 
 
@@ -401,6 +405,7 @@ async def food_photo(request):
 
 
 # ---------- runtime settings (Settings tab) ----------
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 TOKEN_RE = re.compile(r"^\d{5,}:[\w-]{20,}$")
 
 
@@ -420,7 +425,9 @@ def telegram_cfg():
     ids = c["allowed_ids"] if "allowed_ids" in c else parse_ids(os.environ.get("TELEGRAM_ALLOWED_IDS", ""))
     return {"enabled": bool(c.get("enabled", bool(token))), "token": token or "", "allowed_ids": set(ids),
             "auto_save": bool(c.get("auto_save", False)),
-            "session_minutes": min(max(int(c.get("session_minutes", 10)), 1), 180)}
+            "session_minutes": min(max(int(c.get("session_minutes", 10)), 1), 180),
+            "daily_summary": bool(c.get("daily_summary", True)),
+            "summary_time": c.get("summary_time") if TIME_RE.match(c.get("summary_time") or "") else "21:00"}
 
 
 def settings_view(request):
@@ -429,7 +436,8 @@ def settings_view(request):
     return {"telegram": {"enabled": c["enabled"], "has_token": bool(c["token"]),
                          "token_hint": c["token"][-4:] if c["token"] else "",
                          "allowed_ids": sorted(c["allowed_ids"]), "auto_save": c["auto_save"],
-                         "session_minutes": c["session_minutes"], "status": bot.status()},
+                         "session_minutes": c["session_minutes"], "daily_summary": c["daily_summary"],
+                         "summary_time": c["summary_time"], "status": bot.status()},
             "ai": {"base_url": ai["base_url"], "model": ai["model"], "custom": bool(kv_get("ai", {}))}}
 
 
@@ -443,8 +451,40 @@ def nutrition_plan():
     return bodycomp.nutrition(profile(), w[0] if w else None) or {}
 
 
+def advice_snapshot(meal=None):
+    plan = nutrition_plan()
+    if not plan:
+        return None
+    w = latest_weight()
+    return advisor.snapshot(db, profile(), plan, w[0] if w else None, meal=meal)
+
+
 def target_kcal():
     return nutrition_plan().get("kcal")
+
+
+async def post_advice(request):
+    """POST {"kind": "day"|"week"|"ask", "q": "..."}: generate advice, keep it, show it on the Overview."""
+    local_only(request)
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    kind, q = body.get("kind", "day"), str(body.get("q") or "")[:500].strip()
+    if kind not in ("day", "week", "ask"):
+        raise web.HTTPBadRequest(text="kind must be day, week or ask")
+    if kind == "ask" and not q:
+        raise web.HTTPBadRequest(text="q is required for kind=ask")
+    snap = advice_snapshot()
+    if snap is None:
+        return web.json_response({"error": "Set your height and take a weight reading first."}, status=422)
+    try:
+        r = await advisor.report(kind, snap, q or None)
+    except LLMError as e:
+        return web.json_response({"error": str(e)}, status=503)
+    aid = advisor.save_advice(db, kind, r, question=q or None, source="dashboard")
+    publish({"type": "advice"})
+    return web.json_response({"id": aid, **r})
 
 
 async def get_settings(request):
@@ -466,9 +506,13 @@ async def set_telegram(request):
             c["session_minutes"] = m
     except (ValueError, TypeError) as e:
         return web.json_response({"error": f"invalid value: {e}"}, status=400)
-    for k in ("enabled", "auto_save"):
+    for k in ("enabled", "auto_save", "daily_summary"):
         if k in b:
             c[k] = bool(b[k])
+    if "summary_time" in b:
+        if not TIME_RE.match(str(b["summary_time"])):
+            return web.json_response({"error": "summary time must look like 21:00"}, status=400)
+        c["summary_time"] = str(b["summary_time"])
     tok = str(b.get("token") or "").strip()
     if tok:
         if not TOKEN_RE.match(tok):
@@ -553,7 +597,8 @@ def make_app(lan, no_ble):
     app["lan"], app["no_ble"] = lan, no_ble
     config.set_llm_overrides(kv_get("ai", {}))
     app["bot"] = tgbot.TelegramBot(db, cfg=telegram_cfg, target_kcal=target_kcal, latest_weight=latest_weight,
-                                   kv_get=kv_get, kv_set=kv_set, plan=nutrition_plan)
+                                   kv_get=kv_get, kv_set=kv_set, plan=nutrition_plan,
+                                   context=advice_snapshot, notify=lambda: publish({"type": "advice"}))
     async def manifest(request):
         return web.FileResponse(STATIC_DIR / "manifest.webmanifest",
                                 headers={"Content-Type": "application/manifest+json"})
@@ -570,7 +615,7 @@ def make_app(lan, no_ble):
         web.post("/api/import", import_readings),
         web.post("/api/food/analyze", food_analyze), web.post("/api/food/{id}/status", food_status),
         web.get("/api/food/{id}/photo/{idx}", food_photo),
-        web.get("/api/settings", get_settings), web.post("/api/settings/telegram", set_telegram),
+        web.post("/api/advice", post_advice), web.get("/api/settings", get_settings), web.post("/api/settings/telegram", set_telegram),
         web.post("/api/settings/telegram/test", test_telegram),
         web.post("/api/settings/ai", set_ai), web.post("/api/settings/ai/test", test_ai),
         web.delete("/api/readings/{id}", del_reading), web.get("/api/export.csv", export_csv),
