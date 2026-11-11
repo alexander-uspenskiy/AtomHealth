@@ -555,7 +555,12 @@ function renderNutrition() {
   if (!sel.options.length) sel.innerHTML = S.ref.activity.map(a => `<option value="${a.factor}">${a.label}</option>`).join('');
   for (const k of NKEYS) { const el = $('n_' + k); if (document.activeElement !== el) el.value = S.profile[k] ?? ''; }
   const n = S.nutrition, box = $('nutBody');
-  if (!n || !n.kcal) { box.innerHTML = '<div class="card empty" style="margin-top:18px">Needs your height, birth date and at least one weight reading.</div>'; return; }
+  if (!n || !n.kcal) {
+    const why = n === undefined ? 'The AtomHealth server is running an older version without this feature. Restart it to enable this tab.'
+      : !S.readings.length ? 'No weight reading yet. Step on the scale or add one in History; your weight is the one input that does not come from Settings.'
+      : 'Set your height in Settings.';
+    box.innerHTML = `<div class="card empty" style="margin-top:18px">${why}</div>`; return;
+  }
   const adj = n.adjust, gp = n.goal === 'maintain' ? 'Maintenance' : (adj < 0 ? 'Deficit' : 'Surplus');
   const eta = n.weeks ? `≈ ${n.weeks} weeks` + (n.weeks > 8 ? ` (${(n.weeks / 4.345).toFixed(1)} months)` : '') : '—';
   const f = (l, v, sub) => `<div class="kpi"><div class="l">${l}</div><div class="v" style="font-size:22px">${v}</div><div class="d muted">${sub || ''}</div></div>`;
