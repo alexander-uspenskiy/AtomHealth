@@ -438,9 +438,13 @@ def latest_weight():
     return (r["weight"], r["ts"]) if r else None
 
 
-def target_kcal():
+def nutrition_plan():
     w = latest_weight()
-    return (bodycomp.nutrition(profile(), w[0] if w else None) or {}).get("kcal")
+    return bodycomp.nutrition(profile(), w[0] if w else None) or {}
+
+
+def target_kcal():
+    return nutrition_plan().get("kcal")
 
 
 async def get_settings(request):
@@ -549,7 +553,7 @@ def make_app(lan, no_ble):
     app["lan"], app["no_ble"] = lan, no_ble
     config.set_llm_overrides(kv_get("ai", {}))
     app["bot"] = tgbot.TelegramBot(db, cfg=telegram_cfg, target_kcal=target_kcal, latest_weight=latest_weight,
-                                   kv_get=kv_get, kv_set=kv_set)
+                                   kv_get=kv_get, kv_set=kv_set, plan=nutrition_plan)
     async def manifest(request):
         return web.FileResponse(STATIC_DIR / "manifest.webmanifest",
                                 headers={"Content-Type": "application/manifest+json"})

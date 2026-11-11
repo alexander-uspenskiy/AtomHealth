@@ -690,8 +690,13 @@ async function loadCfg(fill) {
   try { CFG = await (await fetch('/api/settings')).json(); } catch (e) { return; }
   renderTgStatus(); if (fill) fillCfg();
 }
+let tgMask = '';   // what the token field shows while a saved token is kept (never the real token)
 function fillCfg() {
-  const t = CFG.telegram;
+  const t = CFG.telegram, tok = $('tg_token');
+  if (!tok.value || tok.value === tgMask) {   // do not overwrite a token the user is typing
+    tgMask = t.has_token ? '•'.repeat(20) + t.token_hint : '';
+    tok.value = tgMask;
+  }
   $('tg_ids').value = t.allowed_ids.join(', '); $('tg_session').value = t.session_minutes;
   $('tg_enabled').checked = t.enabled; $('tg_auto').checked = t.auto_save;
   $('ai_url').value = CFG.ai.custom ? CFG.ai.base_url : ''; $('ai_model').value = CFG.ai.custom ? CFG.ai.model : '';
@@ -705,9 +710,9 @@ function renderTgStatus() {
   hint.textContent = '';
   if (st.error) { const b = document.createElement('span'); b.className = 'msg-bad'; b.textContent = st.error; hint.append(b); }
   else if (t.has_token) {
-    hint.append(`Token saved (…${t.token_hint}). Leave empty to keep it. `);
+    hint.append(`Token saved (…${t.token_hint}). Leave the stars to keep it, or paste a new token to replace it. `);
     const rm = document.createElement('button'); rm.className = 'link'; rm.textContent = 'Remove token';
-    rm.onclick = async () => { if (!confirm('Remove the bot token? The bot will stop.')) return; const r = await post('/api/settings/telegram', { clear_token: true }); if (r.ok) { CFG = r.j; renderTgStatus(); } };
+    rm.onclick = async () => { if (!confirm('Remove the bot token? The bot will stop.')) return; const r = await post('/api/settings/telegram', { clear_token: true }); if (r.ok) { CFG = r.j; $('tg_token').value = ''; fillCfg(); renderTgStatus(); } };
     hint.append(rm);
   } else hint.textContent = 'Create a bot with @BotFather in Telegram and paste its token here.';
   const box = $('tgContacts'); box.textContent = '';
@@ -719,9 +724,10 @@ function renderTgStatus() {
     row.append(who, b); box.append(row);
   }
 }
+$('tg_token').onfocus = e => { if (e.target.value === tgMask) e.target.select(); };
 $('tgSave').onclick = async () => {
   const body = { enabled: $('tg_enabled').checked, auto_save: $('tg_auto').checked, allowed_ids: $('tg_ids').value, session_minutes: $('tg_session').value };
-  const tok = $('tg_token').value.trim(); if (tok) body.token = tok;
+  const tok = $('tg_token').value.trim(); if (tok && tok !== tgMask) body.token = tok;
   const r = await post('/api/settings/telegram', body);
   if (!r.ok) return say('tgMsg', r.j.error || 'Could not save', true);
   CFG = r.j; $('tg_token').value = ''; fillCfg(); renderTgStatus(); say('tgMsg', 'Saved ✓'); setTimeout(() => { say('tgMsg'); loadCfg(false); }, 2000);

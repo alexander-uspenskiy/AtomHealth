@@ -92,18 +92,41 @@ def meal_count():
     return appmod.db.execute("SELECT COUNT(*) FROM meals").fetchone()[0]
 
 
-def test_stranger_only_gets_their_id_on_start_and_is_remembered():
+def test_stranger_gets_their_id_once_and_nothing_else():
     async def go():
         bot, _ = make_bot()
-        await bot.handle_update(text_msg("hello", uid=7))
-        assert bot.api.calls == []
-        await bot.handle_update({"update_id": 2, "message": {"chat": {"id": 7, "type": "private"},
-                                                           "from": {"id": 7, "first_name": "Eve", "username": "eve"}, "text": "/start"}})
+        await bot.handle_update(text_msg("hi", uid=7))        # any first message gets the ID
+        await bot.handle_update(text_msg("hello?", uid=7))    # but not again within 10 minutes
+        await bot.handle_update(text_msg("/start", uid=7))    # /start always answers
+        await bot.handle_update(photo_msg(uid=7))             # photos from strangers are never analysed
         return bot
     bot = run(go())
     sent = bot.api.of("sendMessage")
-    assert len(sent) == 1 and "<code>7</code>" in sent[0]["text"]
-    assert bot.status()["contacts"][0]["id"] == 7 and meal_count() == 0
+    assert len(sent) == 2 and all("<code>7</code>" in m["text"] for m in sent)
+    assert bot.status()["contacts"][0]["id"] == 7 and "replied" not in bot.status()["contacts"][0]
+    assert meal_count() == 0 and not bot.api.of("editMessageText")
+
+
+def test_start_welcomes_with_daily_limit_and_what_is_left(analyzed):
+    plan = {"kcal": 2100, "goal": "lose", "macros": [{"key": "protein", "g": 130}, {"key": "carbs", "g": 220}, {"key": "fat", "g": 70}]}
+
+    async def go():
+        bot, _ = make_bot()
+        bot.plan = lambda: plan
+        await bot.handle_update({"update_id": 1, "message": {"chat": {"id": 42, "type": "private"},
+                                                           "from": {"id": 42, "first_name": "Al<ex>"}, "text": "/start"}})
+        await bot.handle_update(photo_msg())
+        meal = appmod.db.execute("SELECT id FROM meals").fetchone()[0]
+        food.set_status(appmod.db, meal, "confirmed")
+        await bot.handle_update(text_msg("/start"))
+        bot.plan = lambda: {}
+        await bot.handle_update(text_msg("/start"))
+        return bot
+    texts = [m["text"] for m in run(go()).api.of("sendMessage") if "Welcome" in m["text"]]
+    assert "Welcome, Al&lt;ex&gt;!" in texts[0] and "<b>2,100 kcal</b> (goal: lose weight)" in texts[0]
+    assert "Protein 130 g · Carbs 220 g · Fat 70 g" in texts[0] and "Today so far: 0 kcal → 2,100 left" in texts[0]
+    assert "Today so far: 458 kcal → 1,642 left" in texts[1] and "/today" in texts[1]
+    assert "don't have a daily calorie limit" in texts[2]
 
 
 def test_group_chats_are_ignored():

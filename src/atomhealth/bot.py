@@ -113,8 +113,9 @@ def keyboard(meal_id, status):
 
 
 class TelegramBot:
-    def __init__(self, db, *, cfg, target_kcal, latest_weight, kv_get, kv_set, api_factory=TgApi, api_base=API):
-        self.db, self.cfg = db, cfg
+    def __init__(self, db, *, cfg, target_kcal, latest_weight, kv_get, kv_set, plan=lambda: {},
+                 api_factory=TgApi, api_base=API):
+        self.db, self.cfg, self.plan = db, cfg, plan
         self.target_kcal, self.latest_weight = target_kcal, latest_weight
         self.kv_get, self.kv_set = kv_get, kv_set
         self.api_factory, self.api_base = api_factory, api_base
@@ -130,7 +131,7 @@ class TelegramBot:
     def status(self):
         return {"state": self.state, "username": self.username, "error": self.error,
                 "last_update": self.last_update,
-                "contacts": [{"id": i, **c} for i, c in sorted(self.contacts.items(), key=lambda x: -x[1]["ts"])]}
+                "contacts": [{"id": i, **{k: v for k, v in c.items() if k != "replied"}} for i, c in sorted(self.contacts.items(), key=lambda x: -x[1]["ts"])]}
 
     async def apply(self):
         """(Re)start according to the current settings."""
@@ -269,16 +270,22 @@ class TelegramBot:
         chat_id, frm = m["chat"]["id"], m.get("from") or {}
         uid, text = frm.get("id"), (m.get("text") or "").strip()
         if not self._allowed(uid):
+            prev = self.contacts.get(uid, {})
             self.contacts[uid] = {"name": " ".join(filter(None, [frm.get("first_name"), frm.get("last_name")])) or "?",
-                                  "username": frm.get("username"), "ts": int(time.time())}
+                                  "username": frm.get("username"), "ts": int(time.time()),
+                                  "replied": prev.get("replied", 0)}
             while len(self.contacts) > 5:
                 self.contacts.pop(min(self.contacts, key=lambda k: self.contacts[k]["ts"]))
-            if text.startswith("/start"):  # the only thing a stranger gets: their ID, to put in Settings
+            # The only thing a stranger gets is their own ID (to put in Settings): on /start, or at most
+            # once every 10 minutes for any other message, so the bot cannot be used to spam.
+            now = int(time.time())
+            if text.startswith("/start") or now - self.contacts[uid]["replied"] > 600:
+                self.contacts[uid]["replied"] = now
                 await self._send(chat_id, f"This is a private bot. Your Telegram ID is <code>{uid}</code>.\n"
                                           "To use it, add that ID in AtomHealth → Settings → Telegram bot.")
             return
         if text.startswith("/"):
-            return await self._command(chat_id, text.split()[0].split("@")[0].lower())
+            return await self._command(chat_id, text.split()[0].split("@")[0].lower(), frm.get("first_name"))
         fid = None
         if m.get("photo"):
             fid = m["photo"][-1]["file_id"]
@@ -302,8 +309,30 @@ class TelegramBot:
         if a:
             await self._process(key[0], a["files"], a["caption"])
 
-    async def _command(self, chat_id, cmd):
-        if cmd in ("/start", "/help"):
+    def welcome_text(self, name=None):
+        """Greeting with today's calorie limit, macros and what is left."""
+        who = f", {esc(name)}" if name else ""
+        p = self.plan() or {}
+        if not p.get("kcal"):
+            return (f"👋 Welcome{who}!\n"
+                    "I don't have a daily calorie limit for you yet. Set your height in the dashboard (Settings) "
+                    "and take a weight reading, and I'll work one out.\n\n" + HELP)
+        goal = {"lose": "lose weight", "maintain": "maintain weight", "gain": "gain weight"}.get(p.get("goal"), "")
+        start = food.day_start()
+        eaten = food.sum_meals(food.meals_between(self.db, start, start + 86400))["kcal"]
+        left = p["kcal"] - eaten
+        lines = [f"👋 Welcome{who}!", "",
+                 f"🎯 Your daily limit: <b>{kcal_fmt(p['kcal'])} kcal</b>" + (f" (goal: {goal})" if goal else "")]
+        m = {x["key"]: x["g"] for x in p.get("macros", [])}
+        if m:
+            lines.append(f"Protein {m.get('protein', 0)} g · Carbs {m.get('carbs', 0)} g · Fat {m.get('fat', 0)} g")
+        lines.append(f"Today so far: {kcal_fmt(eaten)} kcal → {kcal_fmt(abs(left))} {'left' if left >= 0 else 'over'}")
+        return "\n".join(lines) + "\n\n" + HELP
+
+    async def _command(self, chat_id, cmd, name=None):
+        if cmd == "/start":
+            return await self._send(chat_id, self.welcome_text(name))
+        if cmd == "/help":
             return await self._send(chat_id, HELP)
         if cmd == "/today":
             start = food.day_start()
