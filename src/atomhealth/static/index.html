@@ -227,6 +227,15 @@ details.more > :not(summary) { margin-top:10px; }
 @media (max-width:860px) { .kcal-hero { grid-template-columns:1fr; } }
 @media (max-width:860px) { .hero { grid-template-columns:1fr; } .charts { grid-template-columns:1fr; } .status span.t { display:none; } }
 @media (max-width:560px) { .top-in { flex-wrap:wrap; gap:10px; } .tabs { order:3; width:100%; margin:0; } main { padding:16px 14px 50px; } .live .num { font-size:52px; } .chart-box { height:240px; } }
+/* ---------- history ---------- */
+#v-history > .card, #v-history > .cols { margin-top:14px; }
+#v-history > :first-child { margin-top:0; }
+#v-history .cols > .card { margin-top:0; min-width:0; }
+#v-history .scroll { max-width:100%; }
+#v-history td.l, #v-history th.l { text-align:left; }
+#v-history td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13px; }
+.thumb { width:34px; height:34px; object-fit:cover; border-radius:8px; vertical-align:middle; margin-right:4px; background:var(--surface2); }
+@media (max-width:1000px) { #v-history .cols { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -331,16 +340,17 @@ details.more > :not(summary) { margin-top:10px; }
 
 <!-- ============ HISTORY ============ -->
 <section class="view" id="v-history" hidden>
-  <div class="grid g2">
+  <div class="cols hist-top">
     <div class="card"><div class="card-h"><div><h2>Add a reading</h2><p class="sub">For measurements taken elsewhere</p></div></div>
       <div class="form"><div><label for="mw">Weight (kg)</label><input id="mw" type="number" step="0.05" inputmode="decimal"></div>
       <div><label for="mt">Date and time</label><input id="mt" type="datetime-local"></div></div>
-      <div style="margin-top:16px"><button class="btn" id="addBtn">Add reading</button></div></div>
+      <div style="margin-top:12px"><button class="btn" id="addBtn">Add reading</button></div></div>
     <div class="card"><div class="card-h"><div><h2>Import history</h2><p class="sub">CSV with a date/time column and a weight (kg) column. Duplicates are skipped.</p></div></div>
       <input id="impFile" type="file" accept=".csv,text/csv"><div id="impMsg" class="hint"></div>
-      <div style="margin-top:16px"><a href="/api/export.csv"><button class="btn ghost" type="button">Export all as CSV</button></a></div></div>
+      <div style="margin-top:12px"><a href="/api/export.csv"><button class="btn ghost" type="button">Export all as CSV</button></a></div></div>
   </div>
-  <div class="card" style="margin-top:14px"><div class="card-h"><div><h2>All readings</h2><p class="sub" id="histCount"></p></div></div><div class="scroll" id="hist"></div></div>
+  <div class="card"><div class="card-h"><div><h2>Nutrition data</h2><p class="sub" id="mealCount"></p></div></div><div class="scroll" id="meals"></div></div>
+  <div class="card"><div class="card-h"><div><h2>All readings</h2><p class="sub" id="histCount"></p></div></div><div class="scroll" id="hist"></div></div>
 </section>
 
 <!-- ============ SETTINGS ============ -->
@@ -401,6 +411,7 @@ const fmt = (v, d = 1) => v == null || isNaN(v) ? '—' : Number(v).toFixed(d);
 const sgn = (v, d = 1) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
 const fdate = ts => new Date(ts * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const fdt = ts => new Date(ts * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const last = () => S.readings[S.readings.length - 1];
 
@@ -440,7 +451,7 @@ document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
 /* ---------------- data ---------------- */
 async function load() { S = await (await fetch('/api/state')).json(); renderAll(); }
 function renderAll() {
-  renderLive(S.live); renderKpis(); renderGauges(); renderGoal(); renderStats(); renderAnalysis(); renderNutrition(); renderHist(); renderCoach(); fillSettings(); renderCharts();
+  renderLive(S.live); renderKpis(); renderGauges(); renderGoal(); renderStats(); renderAnalysis(); renderNutrition(); renderHist(); renderMeals(); renderCoach(); fillSettings(); renderCharts();
 }
 
 function renderLive(l) {
@@ -710,6 +721,18 @@ function renderHist() {
     R.map(r => `<tr><td>${fdt(r.ts)}</td><td><b>${fmt(r.weight, 2)}</b></td><td>${fmt(r.bmi)}</td><td>${fmt(r.fat_pct)}</td><td>${fmt(r.fat_kg)}</td><td>${fmt(r.lean_kg)}</td><td>${fmt(r.muscle_kg)}</td><td>${fmt(r.water_pct)}</td><td class="muted">${r.source}</td><td>${r.synced ? '✓' : '·'}</td><td><button class="link" onclick="del(${r.id})" aria-label="Delete reading">Delete</button></td></tr>`).join('') + '</tbody></table>'
     : '<div class="empty">Nothing here yet.</div>';
 }
+function renderMeals() {
+  const M = S.meals || [];
+  $('mealCount').textContent = M.length ? `${M.length} meals logged through the Telegram bot or the API, newest first` : '';
+  $('meals').innerHTML = M.length ? '<table><thead><tr><th class="l">Date</th><th class="l">Meal</th><th class="l">Photos</th><th>kcal</th><th>Protein</th><th>Carbs</th><th>Fat</th><th class="l">Items</th><th>Status</th><th></th></tr></thead><tbody>' +
+    M.map(m => `<tr><td class="l">${fdt(m.ts)}</td><td class="l"><b>${esc(m.type && m.type !== 'unknown' ? m.type[0].toUpperCase() + m.type.slice(1) : 'Meal')}</b>${m.caption ? `<div class="muted" style="font-size:12px">${esc(m.caption)}</div>` : ''}</td>` +
+      `<td class="l">${Array.from({ length: Math.min(m.photos, 3) }, (_, i) => `<a href="/api/food/${m.id}/photo/${i}" target="_blank"><img class="thumb" loading="lazy" src="/api/food/${m.id}/photo/${i}" alt="Meal photo"></a>`).join('')}${m.photos > 3 ? `<span class="muted">+${m.photos - 3}</span>` : ''}</td>` +
+      `<td><b>${fmt(m.kcal, 0)}</b></td><td>${fmt(m.protein_g, 0)} g</td><td>${fmt(m.carbs_g, 0)} g</td><td>${fmt(m.fat_g, 0)} g</td><td class="items">${m.items.map(i => esc(i.name) + (i.grams ? ` ${Math.round(i.grams)} g` : '')).join(', ')}</td>` +
+      `<td><span class="chip${m.status === 'pending' ? ' z4' : ''}">${m.status === 'pending' ? 'Pending' : 'Saved'}</span></td>` +
+      `<td><button class="link" onclick="delMeal(${m.id})" aria-label="Delete meal">Delete</button></td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty">No meals yet. Send a photo of your meal to the Telegram bot.</div>';
+}
+async function delMeal(id) { if (confirm('Delete this meal?')) { await fetch('/api/food/' + id + '/status', { method: 'POST', body: JSON.stringify({ status: 'discarded' }) }); load(); } }
 async function del(id) { if (confirm('Delete this reading?')) { await fetch('/api/readings/' + id, { method: 'DELETE' }); load(); } }
 $('addBtn').onclick = async () => {
   const w = $('mw').value, t = $('mt').value; if (!w) return;

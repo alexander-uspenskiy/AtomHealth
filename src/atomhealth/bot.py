@@ -434,6 +434,7 @@ class TelegramBot:
             if s and s["meal_id"] == mid:
                 self.sessions.pop(chat_id)
         await self.api.call("answerCallbackQuery", callback_query_id=cq["id"], text=toast)
+        self.notify()
         if chat_id and msg_id:
             await self._refresh_meal_message(chat_id, msg_id, mid)
 
@@ -462,6 +463,7 @@ class TelegramBot:
                         pass
                 self.sessions[chat_id] = {"meal_id": meal_id, "msg_id": note["message_id"], "last": time.time()}
                 await self._refresh_meal_message(chat_id, note["message_id"], meal_id)
+                self.notify()                           # dashboard History shows the meal right away
             except food.AnalysisError as e:
                 await self._edit(chat_id, note["message_id"], f"⚠️ {esc(e)}")
             except LLMError:

@@ -210,7 +210,20 @@ async def state(request):
         "nutrition": bodycomp.nutrition(prof, rows[-1]["weight"] if rows else None),
         "readings": [reading_dict(r, prof) for r in rows],
         "live": live, "health_token": token(), "advice": advisor.feed(db),
+        "meals": meal_history(),
     })
+
+
+def meal_history(limit=200):
+    """Logged meals (newest first, discarded ones left out) with their items and photo count."""
+    out = []
+    for m in db.execute("SELECT * FROM meals WHERE status!='discarded' ORDER BY ts DESC, id DESC LIMIT ?", (limit,)):
+        items = db.execute("SELECT name, grams, kcal FROM meal_items WHERE meal_id=? ORDER BY id", (m["id"],)).fetchall()
+        out.append({"id": m["id"], "ts": m["ts"], "type": m["meal_type"], "caption": m["caption"], "status": m["status"],
+                    "kcal": m["kcal"], "protein_g": m["protein_g"], "carbs_g": m["carbs_g"], "fat_g": m["fat_g"],
+                    "fiber_g": m["fiber_g"], "source": m["source"], "photos": food.meal_photo_count(db, m["id"]),
+                    "items": [{"name": i["name"], "grams": i["grams"], "kcal": i["kcal"]} for i in items]})
+    return out
 
 
 async def set_profile(request):

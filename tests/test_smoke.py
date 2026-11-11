@@ -34,3 +34,18 @@ def test_nutrition_deficit_floor():
 
 def test_nutrition_needs_data():
     assert bodycomp.nutrition(_p(), None) == {}
+
+
+def test_meal_history_lists_meals_with_photos_and_skips_discarded():
+    from atomhealth import food
+    db = app.db
+    db.execute("DELETE FROM meals")
+    a = {"is_food": True, "meal_type": "lunch", "confidence": 0.8, "notes": "", "adjusted": [],
+         "items": [{"name": "rice", "grams": 150, "kcal": 200, "protein_g": 4, "carbs_g": 44, "fat_g": 1, "fiber_g": 1}],
+         "totals": {"kcal": 200, "protein_g": 4, "carbs_g": 44, "fat_g": 1, "fiber_g": 1}}
+    keep = food.store_meal(db, a, photos=None, caption="homemade")
+    gone = food.store_meal(db, a, photos=None, caption="")
+    food.set_status(db, gone, "discarded")
+    m = app.meal_history()
+    assert [x["id"] for x in m] == [keep]
+    assert m[0]["items"][0]["name"] == "rice" and m[0]["photos"] == 0 and m[0]["caption"] == "homemade"
