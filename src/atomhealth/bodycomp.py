@@ -94,3 +94,101 @@ def reference(profile):
         "ideal": {k: round(v, 1) for k, v in ideal.items()} if h else {},
         "activity": [{"label": a, "factor": f} for a, f in ACTIVITY],
     }
+
+
+KCAL_PER_KG = 7700          # energy content of 1 kg of body-weight change (rule of thumb)
+DIET_STYLES = {             # protein add-on (g/kg), fat share of energy
+    "balanced": (0.0, 0.30),
+    "high_protein": (0.4, 0.30),
+    "low_carb": (0.2, 0.40),
+}
+MEALS = [("Breakfast", 0.25), ("Lunch", 0.30), ("Dinner", 0.30), ("Snacks", 0.15)]
+
+
+def nutrition(profile, weight):
+    """Daily energy target, macros and health limits for the user's goal.
+
+    BMR (Mifflin-St Jeor) x activity factor = maintenance; the goal adds a
+    deficit / surplus of ``pace`` kg/week x 7700 kcal. Deficits are capped at
+    25% of maintenance and floored at 1500 (men) / 1200 (women) kcal and 90% of BMR.
+    """
+    h = float(profile.get("height_cm") or 0)
+    age = float(profile.get("age") or 0)
+    male = (profile.get("sex") or "male") == "male"
+    if not weight or h <= 0 or age <= 0:
+        return {}
+    m = h / 100
+    bmi = weight / (m * m)
+    opt = 22 * m * m
+    target = float(profile.get("target_weight") or opt)
+    factor = float(profile.get("activity") or 1.375)
+    bmr = 10 * weight + 6.25 * h - 5 * age + (5 if male else -161)
+    tdee = bmr * factor
+
+    goal = profile.get("diet_goal") or "auto"
+    if goal not in ("lose", "maintain", "gain"):
+        goal = "lose" if weight > target + 0.5 else "gain" if weight < target - 0.5 else "maintain"
+    style = profile.get("diet_style") if profile.get("diet_style") in DIET_STYLES else "balanced"
+    warnings = []
+
+    pace = float(profile.get("diet_pace") or (0.5 if goal == "lose" else 0.25))
+    kcal = tdee
+    if goal == "lose":
+        pace = min(pace, weight * 0.01)                     # <= 1% of body weight per week
+        kcal = tdee - pace * KCAL_PER_KG / 7
+        floor = max(1500 if male else 1200, 0.9 * bmr)
+        lowest = max(floor, 0.75 * tdee)
+        if kcal < lowest:
+            kcal = lowest
+            warnings.append("The deficit was limited to a safe minimum intake, so progress will be slower than the chosen pace.")
+        if bmi < 18.5:
+            warnings.append("Your BMI is already below 18.5. Losing more weight is not recommended; consider 'Maintain' or 'Gain'.")
+    elif goal == "gain":
+        kcal = tdee + pace * KCAL_PER_KG / 7
+    else:
+        pace = 0.0
+    eff_pace = (tdee - kcal) * 7 / KCAL_PER_KG              # + = losing, - = gaining
+    if age < 18:
+        warnings.append("These formulas are for adults. For under 18s, ask a doctor or dietitian.")
+
+    # protein: g per kg of the weight you are heading for (when losing) else current weight
+    basis = min(weight, target) if goal == "lose" else weight
+    base = {"lose": 1.6, "maintain": 1.2, "gain": 1.6}[goal] + DIET_STYLES[style][0]
+    if age >= 60:
+        base += 0.2                                         # sarcopenia: older adults need more
+    protein_g = base * basis
+    fat_kcal = DIET_STYLES[style][1] * kcal
+    carb_kcal = max(kcal - protein_g * 4 - fat_kcal, 0)
+    if carb_kcal == 0:
+        fat_kcal = max(kcal - protein_g * 4, 0)
+    macros = [
+        {"key": "protein", "label": "Protein", "g": protein_g, "kcal": protein_g * 4},
+        {"key": "carbs", "label": "Carbohydrate", "g": carb_kcal / 4, "kcal": carb_kcal},
+        {"key": "fat", "label": "Fat", "g": fat_kcal / 9, "kcal": fat_kcal},
+    ]
+    for x in macros:
+        x["pct"] = round(100 * x["kcal"] / kcal)
+        x["g"], x["kcal"] = round(x["g"]), round(x["kcal"])
+
+    weeks = abs(weight - target) / abs(eff_pace) if goal != "maintain" and abs(eff_pace) > 0.01 else None
+    if goal == "lose" and weight <= target:
+        weeks = None
+    if goal == "gain" and weight >= target:
+        weeks = None
+    return {
+        "goal": goal, "style": style, "activity": factor, "pace": round(pace, 2), "eff_pace": round(eff_pace, 2),
+        "weight": round(weight, 1), "target_weight": round(target, 1), "optimal_weight": round(opt, 1),
+        "bmr": round(bmr), "maintenance": round(tdee), "kcal": round(kcal), "adjust": round(kcal - tdee),
+        "maintenance_at_target": round((10 * target + 6.25 * h - 5 * age + (5 if male else -161)) * factor),
+        "weeks": round(weeks) if weeks else None,
+        "macros": macros, "protein_per_kg": round(base, 1), "protein_basis_kg": round(basis, 1),
+        "meals": [{"label": n, "kcal": round(kcal * s), "pct": round(s * 100)} for n, s in MEALS],
+        "limits": {
+            "fiber_g": round(14 * kcal / 1000),             # IOM: 14 g per 1000 kcal
+            "water_l": round(0.033 * weight, 1),            # ~33 ml per kg, all fluids
+            "sat_fat_g": round(0.10 * kcal / 9),            # WHO: < 10% of energy
+            "sugar_g": round(0.10 * kcal / 4),              # WHO: free sugars < 10% (ideally 5%)
+            "sodium_mg": 2000,                              # WHO: < 2 g sodium (5 g salt)
+        },
+        "warnings": warnings,
+    }

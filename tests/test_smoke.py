@@ -8,3 +8,29 @@ def test_package_paths():
 
 def test_bodycomp_importable():
     assert hasattr(bodycomp, "compute") and hasattr(bodycomp, "healthy_range")
+
+
+def _p(**kw):
+    return {"height_cm": 175, "age": 35, "sex": "male", **kw}
+
+
+def test_nutrition_maintenance_matches_formula():
+    n = bodycomp.nutrition(_p(diet_goal="maintain", activity=1.55), 70)
+    bmr = 10 * 70 + 6.25 * 175 - 5 * 35 + 5
+    assert n["bmr"] == round(bmr) and n["maintenance"] == round(bmr * 1.55) and n["kcal"] == n["maintenance"]
+    assert sum(m["pct"] for m in n["macros"]) in (99, 100, 101)
+
+
+def test_nutrition_auto_goal_and_deficit():
+    n = bodycomp.nutrition(_p(target_weight=75), 90)  # auto -> lose, 0.5 kg/week = 550 kcal
+    assert n["goal"] == "lose" and n["adjust"] == -550 and n["weeks"] == 30
+    assert bodycomp.nutrition(_p(target_weight=75), 60)["goal"] == "gain"
+
+
+def test_nutrition_deficit_floor():
+    n = bodycomp.nutrition(_p(sex="female", age=60, height_cm=155, activity=1.2, diet_goal="lose", diet_pace=1), 80)
+    assert n["kcal"] >= 1200 and n["warnings"]
+
+
+def test_nutrition_needs_data():
+    assert bodycomp.nutrition(_p(), None) == {}

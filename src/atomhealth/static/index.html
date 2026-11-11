@@ -163,6 +163,22 @@ tbody tr:hover { background:var(--surface2); } tr:last-child td { border-bottom:
 code { background:var(--surface2); border:1px solid var(--border); padding:1px 6px; border-radius:6px; font-size:12.5px; word-break:break-all; }
 ol.steps li { margin-bottom:8px; }
 
+/* ---------- nutrition ---------- */
+.kcal-hero { display:grid; grid-template-columns:minmax(260px,1fr) 2fr; gap:18px; margin-top:18px; }
+.kcal-big { background:linear-gradient(160deg,var(--accent-soft),var(--surface)); display:flex; flex-direction:column; justify-content:center; }
+.kcal-big .num { font-size:60px; font-weight:750; letter-spacing:-.03em; line-height:1.05; margin:6px 0 2px; }
+.kcal-big .num small { font-size:20px; font-weight:600; color:var(--muted); margin-left:6px; letter-spacing:0; }
+.kcal-big .lbl { font-size:12px; font-weight:650; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
+.macro-bar { display:flex; height:16px; border-radius:99px; overflow:hidden; background:var(--surface2); margin:2px 0 14px; }
+.macro-bar i { display:block; height:100%; }
+.m-protein { background:var(--z1); } .m-carbs { background:var(--z3); } .m-fat { background:var(--z4); }
+.dot-m { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:7px; }
+.warn { background:color-mix(in srgb,var(--z4) 16%,transparent); color:var(--text); border-radius:12px; padding:11px 14px; font-size:13px; margin-top:14px; }
+.plate { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+.plate > div { background:var(--surface2); border-radius:12px; padding:12px 14px; }
+.plate b { display:block; margin-bottom:2px; } .plate span { color:var(--text2); font-size:13px; }
+.plate .pct { float:right; font-size:20px; font-weight:750; color:var(--accent); }
+@media (max-width:860px) { .kcal-hero { grid-template-columns:1fr; } }
 @media (max-width:860px) { .hero { grid-template-columns:1fr; } .charts { grid-template-columns:1fr; } .status span.t { display:none; } }
 @media (max-width:560px) { .top-in { flex-wrap:wrap; gap:10px; } .tabs { order:3; width:100%; margin:0; } main { padding:16px 14px 50px; } .live .num { font-size:52px; } .chart-box { height:240px; } }
 </style>
@@ -174,6 +190,7 @@ ol.steps li { margin-bottom:8px; }
     <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
     <button role="tab" data-tab="trends" aria-selected="false">Trends</button>
     <button role="tab" data-tab="analysis" aria-selected="false">Body analysis</button>
+    <button role="tab" data-tab="nutrition" aria-selected="false">Nutrition</button>
     <button role="tab" data-tab="history" aria-selected="false">History</button>
     <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
   </nav>
@@ -244,6 +261,19 @@ ol.steps li { margin-bottom:8px; }
     </ul>
     <div class="callout" style="margin-top:14px">Informational only, not medical advice. Day-to-day weight swings of 1–2 kg from water and food are normal, so judge progress by the trend rather than single readings.</div>
   </div>
+</section>
+
+<!-- ============ NUTRITION ============ -->
+<section class="view" id="v-nutrition" hidden>
+  <div class="card"><div class="card-h"><div><h2>Your nutrition plan</h2><p class="sub">Daily energy target from your age, sex, height, current weight, activity and goal weight</p></div></div>
+    <div class="form">
+      <div><label for="n_activity">Activity level</label><select id="n_activity"></select></div>
+      <div><label for="n_diet_goal">Goal</label><select id="n_diet_goal"><option value="auto">Automatic (from target weight)</option><option value="lose">Lose weight</option><option value="maintain">Maintain weight</option><option value="gain">Gain weight</option></select></div>
+      <div><label for="n_diet_pace">Pace</label><select id="n_diet_pace"><option value="">Recommended</option><option value="0.25">Gentle · 0.25 kg/week</option><option value="0.5">Steady · 0.5 kg/week</option><option value="0.75">Fast · 0.75 kg/week</option><option value="1">Aggressive · 1 kg/week</option></select></div>
+      <div><label for="n_diet_style">Eating style</label><select id="n_diet_style"><option value="balanced">Balanced</option><option value="high_protein">High protein</option><option value="low_carb">Lower carb</option></select></div>
+    </div>
+  </div>
+  <div id="nutBody"></div>
 </section>
 
 <!-- ============ HISTORY ============ -->
@@ -333,7 +363,7 @@ document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
 /* ---------------- data ---------------- */
 async function load() { S = await (await fetch('/api/state')).json(); renderAll(); }
 function renderAll() {
-  renderLive(S.live); renderKpis(); renderGauges(); renderGoal(); renderStats(); renderAnalysis(); renderHist(); fillSettings(); renderCharts();
+  renderLive(S.live); renderKpis(); renderGauges(); renderGoal(); renderStats(); renderAnalysis(); renderNutrition(); renderHist(); fillSettings(); renderCharts();
 }
 
 function renderLive(l) {
@@ -517,6 +547,66 @@ function renderAnalysis() {
     `</tbody></table><p class="hint" style="margin-top:10px">${losing ? 'You are above your target, so the deficit column is the relevant one. ' : ''}Deficits are floored at 90% of BMR. Energy-balance estimates carry a ±10% individual error; adjust to what your own trend shows.</p>`;
 }
 
+/* ---------------- nutrition ---------------- */
+const NKEYS = ['activity', 'diet_goal', 'diet_pace', 'diet_style'];
+const GOALS = { lose: 'Lose weight', maintain: 'Maintain weight', gain: 'Gain weight' };
+function renderNutrition() {
+  const sel = $('n_activity');
+  if (!sel.options.length) sel.innerHTML = S.ref.activity.map(a => `<option value="${a.factor}">${a.label}</option>`).join('');
+  for (const k of NKEYS) { const el = $('n_' + k); if (document.activeElement !== el) el.value = S.profile[k] ?? ''; }
+  const n = S.nutrition, box = $('nutBody');
+  if (!n || !n.kcal) { box.innerHTML = '<div class="card empty" style="margin-top:18px">Needs your height, birth date and at least one weight reading.</div>'; return; }
+  const adj = n.adjust, gp = n.goal === 'maintain' ? 'Maintenance' : (adj < 0 ? 'Deficit' : 'Surplus');
+  const eta = n.weeks ? `≈ ${n.weeks} weeks` + (n.weeks > 8 ? ` (${(n.weeks / 4.345).toFixed(1)} months)` : '') : '—';
+  const f = (l, v, sub) => `<div class="kpi"><div class="l">${l}</div><div class="v" style="font-size:22px">${v}</div><div class="d muted">${sub || ''}</div></div>`;
+  const macroRows = n.macros.map(m => `<tr><td><span class="dot-m m-${m.key}"></span>${m.label}</td><td><b>${m.g} g</b></td><td>${m.kcal} kcal</td><td>${m.pct}%</td></tr>`).join('');
+  const L = n.limits;
+  box.innerHTML = `
+  <div class="kcal-hero">
+    <div class="card kcal-big"><div class="lbl">Recommended daily intake</div>
+      <div class="num">${n.kcal}<small>kcal</small></div>
+      <div class="t2">${GOALS[n.goal]}${n.goal !== 'maintain' ? ` · ${Math.abs(n.eff_pace).toFixed(2)} kg/week` : ''}</div></div>
+    <div class="kpis">
+      ${f('Basal metabolic rate', n.bmr + ' kcal', 'Mifflin–St Jeor, at rest')}
+      ${f('Maintenance (TDEE)', n.maintenance + ' kcal', 'BMR × ' + n.activity)}
+      ${f(gp, (adj > 0 ? '+' : adj < 0 ? '−' : '') + Math.abs(adj) + ' kcal', 'vs. maintenance')}
+      ${f('Current → target', `${n.weight} → ${n.target_weight} kg`, n.target_weight === n.optimal_weight ? 'optimal (BMI 22)' : 'optimal: ' + n.optimal_weight + ' kg')}
+      ${f('Time to target', eta, n.goal === 'maintain' ? 'no change planned' : 'at this pace')}
+      ${f('Maintenance at target', n.maintenance_at_target + ' kcal', 'what to eat once you arrive')}
+    </div>
+  </div>
+  ${n.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join('')}
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card"><div class="card-h"><div><h2>Macronutrients</h2><p class="sub">Protein ${n.protein_per_kg} g per kg of ${n.protein_basis_kg} kg · fat and carbohydrate share the rest</p></div></div>
+      <div class="macro-bar" role="img" aria-label="Macro split">${n.macros.map(m => `<i class="m-${m.key}" style="width:${m.pct}%"></i>`).join('')}</div>
+      <table><thead><tr><th></th><th>Per day</th><th>Energy</th><th>Share</th></tr></thead><tbody>${macroRows}</tbody></table></div>
+    <div class="card"><div class="card-h"><div><h2>Daily limits and minimums</h2><p class="sub">Healthy-eating guidance for an adult at ${n.kcal} kcal</p></div></div>
+      <div class="kv">
+        <div>Fibre (at least)</div><div>${L.fiber_g} g</div>
+        <div>Fluids (all drinks, about)</div><div>${L.water_l} L</div>
+        <div>Saturated fat (under)</div><div>${L.sat_fat_g} g</div>
+        <div>Free sugars (under)</div><div>${L.sugar_g} g</div>
+        <div>Sodium (under)</div><div>${L.sodium_mg} mg · 5 g salt</div>
+      </div></div>
+  </div>
+  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>How to split your day</h2><p class="sub">A simple pattern. Move calories between meals to suit your schedule.</p></div></div>
+    <div class="plate">${n.meals.map((m, i) => `<div><span class="pct">${m.pct}%</span><b>${m.label}</b><span><b style="display:inline;color:var(--text)">${m.kcal} kcal</b><br>${['Protein (eggs, yoghurt, cottage cheese) + wholegrain + fruit', 'Half veg, a palm of protein, a fist of whole grains or legumes', 'Like lunch, lighter on starch; finish 2–3 h before bed', 'Fruit, nuts, yoghurt or vegetables with hummus'][i]}</span></div>`).join('')}</div>
+  </div>
+  <div class="card" style="margin-top:18px"><div class="card-h"><div><h2>Healthy eating basics</h2></div></div>
+    <ul class="method" style="margin:0;padding-left:18px">
+      <li><b>Plate:</b> half vegetables and fruit, a quarter lean protein (fish, poultry, eggs, legumes, tofu), a quarter whole grains. Use olive or rapeseed oil, nuts and seeds for fats.</li>
+      <li><b>Eat mostly whole foods</b>; limit processed meat, sugary drinks, sweets and alcohol.</li>
+      <li><b>Fish</b> twice a week (once oily); aim for 5 portions (400 g) of vegetables and fruit a day.</li>
+      <li><b>Protein</b> at every meal helps hold on to muscle while losing weight; strength training twice a week amplifies it.</li>
+      <li><b>Pace:</b> 0.25–0.75 kg/week (≤ 1% of body weight) is sustainable. Judge progress by the 2–3 week trend, then adjust calories by 100–150 kcal.</li>
+    </ul>
+    <div class="callout" style="margin-top:14px">Calculation: BMR = Mifflin–St Jeor (1990) with your age, sex, height and weight, × activity factor. Goal adds or removes ${'7700'} kcal per kg of weight change; deficits are capped at 25% of maintenance and never below 1500 kcal (men) / 1200 kcal (women). Protein follows ISSN/ESPEN ranges (1.2–1.6 g/kg, higher in a deficit, +0.2 g/kg from age 60); fibre 14 g/1000 kcal (IOM); sugar, saturated fat and sodium limits follow WHO. Estimates carry about ±10% individual error. Informational only, not medical advice; see a doctor or dietitian for medical conditions, pregnancy, or if under 18.</div>
+  </div>`;
+}
+NKEYS.forEach(k => $('n_' + k).onchange = async () => {
+  await fetch('/api/profile', { method: 'POST', body: JSON.stringify({ [k]: $('n_' + k).value }) }); load();
+});
+
 /* ---------------- history ---------------- */
 function renderHist() {
   const R = [...S.readings].reverse();
@@ -624,7 +714,7 @@ function renderCharts() {
 const es = new EventSource('/api/events');
 es.onmessage = e => { const ev = JSON.parse(e.data); if (S) { S.live = ev; renderLive(ev); } if (ev.type === 'saved') load(); };
 
-const TABS = ['overview', 'trends', 'analysis', 'history', 'settings'];
+const TABS = ['overview', 'trends', 'analysis', 'nutrition', 'history', 'settings'];
 const fromHash = () => { const h = location.hash.slice(1); return TABS.includes(h) ? h : 'overview'; };
 addEventListener('hashchange', () => showTab(fromHash()));
 showTab(fromHash());

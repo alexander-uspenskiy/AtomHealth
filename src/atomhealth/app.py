@@ -33,6 +33,7 @@ MIN_KG = 20.0
 DEFAULT_PROFILE = {
     "height_cm": 174, "age": 30, "birthdate": None, "sex": "male",
     "target_weight": None, "target_fat_pct": None, "target_date": None,
+    "activity": 1.375, "diet_goal": "auto", "diet_pace": None, "diet_style": "balanced",
 }
 
 # ---------- storage ----------
@@ -179,6 +180,7 @@ async def state(request):
     return web.json_response({
         "profile": prof, "healthy_range": bodycomp.healthy_range(prof),
         "optimal": bodycomp.optimal(prof), "ref": bodycomp.reference(prof),
+        "nutrition": bodycomp.nutrition(prof, rows[-1]["weight"] if rows else None),
         "readings": [reading_dict(r, prof) for r in rows],
         "live": live, "health_token": token(),
     })
@@ -191,7 +193,7 @@ async def set_profile(request):
     for k in DEFAULT_PROFILE:
         if k in body:
             v = body[k]
-            if k in ("height_cm", "age", "target_weight", "target_fat_pct"):
+            if k in ("height_cm", "age", "target_weight", "target_fat_pct", "activity", "diet_pace"):
                 v = float(v) if v not in (None, "") else None
             p[k] = (v or None) if k in ("target_date", "birthdate") else v
     kv_set("profile", p)
