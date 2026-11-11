@@ -18,7 +18,8 @@ from pathlib import Path
 
 from aiohttp import web
 
-from . import bodycomp
+from . import bodycomp, config, food  # noqa: F401  (config loads .env)
+from .llm import LLMError
 
 PKG_DIR = Path(__file__).resolve().parent            # src/atomhealth
 STATIC_DIR = PKG_DIR / "static"
@@ -331,6 +332,48 @@ async def health_ack(request):
     return web.json_response({"acked": ids})
 
 
+MEALS_DIR = DATA_DIR / "meals"
+MAX_UPLOAD = 15 * 1024 * 1024
+
+
+async def food_analyze(request):
+    """POST multipart: photo (file, optional) + caption (text, optional). Stores a pending meal."""
+    local_only(request)
+    photo, caption = None, ""
+    if request.content_type == "multipart/form-data":
+        async for part in await request.multipart():
+            if part.name == "photo":
+                photo = bytes(await part.read(decode=False)) or None
+                if photo and len(photo) > MAX_UPLOAD:
+                    raise web.HTTPRequestEntityTooLarge(max_size=MAX_UPLOAD, actual_size=len(photo))
+            elif part.name == "caption":
+                caption = (await part.text())[:500]
+    else:
+        caption = str((await request.json()).get("caption", ""))[:500]
+    try:
+        analysis = await food.analyze_meal(photo, caption)
+    except food.AnalysisError as e:
+        return web.json_response({"error": str(e)}, status=422)
+    except LLMError as e:
+        return web.json_response({"error": str(e)}, status=503)
+    if not analysis["is_food"]:
+        return web.json_response({"meal_id": None, "analysis": analysis})
+    mid = food.store_meal(db, analysis, photo=photo, caption=caption, photos_dir=MEALS_DIR, source="api")
+    return web.json_response({"meal_id": mid, "analysis": analysis})
+
+
+async def food_status(request):
+    local_only(request)
+    status = (await request.json()).get("status")
+    try:
+        ok = food.set_status(db, int(request.match_info["id"]), status)
+    except ValueError:
+        raise web.HTTPBadRequest(text="status must be pending, confirmed or discarded")
+    if not ok:
+        raise web.HTTPNotFound()
+    return web.json_response({"ok": True})
+
+
 async def on_start(app):
     if not app["no_ble"]:
         app["ble"] = asyncio.create_task(ble_task())
@@ -355,6 +398,7 @@ def make_app(lan, no_ble):
         web.get("/", index), web.get("/api/state", state), web.get("/api/events", events),
         web.post("/api/profile", set_profile), web.post("/api/readings", post_reading),
         web.post("/api/import", import_readings),
+        web.post("/api/food/analyze", food_analyze), web.post("/api/food/{id}/status", food_status),
         web.delete("/api/readings/{id}", del_reading), web.get("/api/export.csv", export_csv),
         web.get("/api/health/pending", health_pending), web.post("/api/health/ack", health_ack),
     ])
