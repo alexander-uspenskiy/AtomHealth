@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS meal_photos(
   UNIQUE(meal_id, idx));
 """)
 db.execute("PRAGMA foreign_keys=ON")
+food.retag_meals(db)
 
 
 def kv_get(k, default=None):

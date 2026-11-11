@@ -32,7 +32,7 @@ HELP = ("<b>AtomHealth food bot</b>\n"
         "/advice – coaching tip for today\n"
         "/week – weekly review and calorie-target check\n"
         "/ask <question> – ask the coach about your diet\n"
-        "/undo – discard the last meal\n"
+        "/undo – delete the last meal with its photos and data\n"
         "/weight – your latest weight\n"
         "/help – this message")
 
@@ -242,12 +242,13 @@ class TelegramBot:
                 and self._status_of(s["meal_id"]) == "pending")
 
     def _render_meal_row(self, meal_id):
-        row = self.db.execute("SELECT raw_json, status FROM meals WHERE id=?", (meal_id,)).fetchone()
+        row = self.db.execute("SELECT raw_json, status, meal_type FROM meals WHERE id=?", (meal_id,)).fetchone()
         if not row:
             return None, None
         start = food.day_start()
         day = food.sum_meals(food.meals_between(self.db, start, start + 86400))["kcal"]
         analysis = json.loads(row["raw_json"])
+        analysis["meal_type"] = row["meal_type"] or "unknown"
         if row["status"] == "pending":
             day += analysis["totals"]["kcal"]
         return render_meal(analysis, row["status"], day, self.target_kcal()), keyboard(meal_id, row["status"])
@@ -355,8 +356,8 @@ class TelegramBot:
         self.notify()                                   # lets the dashboard show it right away
 
     def _meal_analysis(self, meal_id):
-        row = self.db.execute("SELECT raw_json FROM meals WHERE id=?", (meal_id,)).fetchone()
-        return json.loads(row[0]) if row else None
+        row = self.db.execute("SELECT raw_json, meal_type FROM meals WHERE id=?", (meal_id,)).fetchone()
+        return {**json.loads(row[0]), "meal_type": row[1] or "unknown"} if row else None
 
     async def _command(self, chat_id, cmd, name=None, args=""):
         if cmd == "/advice":
@@ -395,12 +396,28 @@ class TelegramBot:
             r = food.last_meal(self.db, "telegram")
             if not r:
                 return await self._send(chat_id, "Nothing to undo.")
-            food.set_status(self.db, r["id"], "discarded")
+            dropped = advisor.purge_for_meal(self.db, r["id"], r["ts"])   # advice that counted this meal
+            food.delete_meal(self.db, r["id"])            # meal, items and photos are gone for good
             s = self.sessions.get(chat_id)
             if s and s["meal_id"] == r["id"]:
                 self.sessions.pop(chat_id)
-                await self._refresh_meal_message(chat_id, s["msg_id"], r["id"])
-            return await self._send(chat_id, f"🗑 Discarded {esc((r['meal_type'] or 'meal'))} ({kcal_fmt(r['kcal'])} kcal).")
+                try:
+                    await self._edit(chat_id, s["msg_id"], "🗑 Deleted.")
+                except TelegramError:
+                    pass
+            self.notify()
+            start = food.day_start()
+            eaten = food.sum_meals(food.meals_between(self.db, start, start + 86400))["kcal"]
+            tgt = self.target_kcal()
+            bal = f"Today: {kcal_fmt(eaten)}"
+            if tgt:
+                left = tgt - eaten
+                bal += f" / {kcal_fmt(tgt)} kcal ({kcal_fmt(abs(left))} {'left' if left >= 0 else 'over'})"
+            else:
+                bal += " kcal"
+            note = f"\n🧹 Removed {dropped} advice message(s) that included it. /advice makes a fresh one." if dropped else ""
+            return await self._send(chat_id, f"🗑 Deleted {esc((r['meal_type'] or 'meal'))} ({kcal_fmt(r['kcal'])} kcal) "
+                                             f"with its photos and data.\n{bal}{note}")
         if cmd == "/weight":
             w = self.latest_weight()
             if not w:

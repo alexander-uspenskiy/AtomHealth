@@ -243,6 +243,17 @@ def save_advice(db, kind, r, *, question=None, meal_id=None, source="api", ts=No
     return cur.lastrowid
 
 
+def purge_for_meal(db, meal_id, meal_ts) -> int:
+    """Drop advice that was written about a meal that no longer exists: its own tip, and the daily
+    summaries of that day generated after it was logged (they counted its calories). Questions and
+    weekly reviews are kept. Returns how many messages were removed."""
+    day = datetime.fromtimestamp(meal_ts).strftime("%Y-%m-%d")
+    cur = db.execute("DELETE FROM advice WHERE meal_id=? OR (kind='day' AND day=? AND ts>=?)",
+                     (meal_id, day, meal_ts))
+    db.commit()
+    return cur.rowcount
+
+
 def _row(r):
     return {"id": r["id"], "ts": r["ts"], "kind": r["kind"], "question": r["question"], "headline": r["headline"],
             "text": r["text"], "used_llm": bool(r["used_llm"]), "source": r["source"]}

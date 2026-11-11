@@ -17,6 +17,8 @@ MAX_SIDE = 1280  # Telegram already caps photos at 1280 px, so these are not dow
 JPEG_QUALITY = 88
 MAX_PHOTOS = 6
 MEAL_TYPES = ("breakfast", "lunch", "dinner", "snack", "unknown")
+# Meal type follows the clock (server local time), never the food: a salad at 8 pm is dinner.
+MEAL_HOURS = ((4, "breakfast"), (11, "lunch"), (16, "snack"), (18, "dinner"), (23, "snack"))
 MAX_GRAMS, MAX_ITEM_KCAL = 2000.0, 3000.0
 
 SYSTEM = """You are a careful nutrition analyst. You look at a photo of a meal (and an optional \
@@ -24,7 +26,6 @@ caption from the user) and estimate what was eaten. Reply with ONE JSON object a
 
 Schema:
 {"is_food": true|false,
- "meal_type": "breakfast"|"lunch"|"dinner"|"snack"|"unknown",
  "items": [{"name": str, "grams": number, "kcal": number, "protein_g": number,
             "carbs_g": number, "fat_g": number, "fiber_g": number}],
  "confidence": number between 0 and 1,
@@ -43,6 +44,16 @@ hidden ingredients or unclear scale. Mention the main uncertainty in notes (one 
 added later). Treat them as one meal: identify each food once and never count the same food twice.
 - If the image shows no food or drink, return {"is_food": false, "items": [], "confidence": 0, "notes": "..."}.
 """
+
+
+def meal_type_for(ts=None) -> str:
+    """breakfast 04-11, lunch 11-16, snack 16-18, dinner 18-23, late snack 23-04."""
+    hour = time.localtime(ts or time.time()).tm_hour
+    name = "snack"                      # 00:00-03:59 is the tail of the late-night snack window
+    for start, label in MEAL_HOURS:
+        if hour >= start:
+            name = label
+    return name
 
 
 class AnalysisError(Exception):
@@ -174,6 +185,7 @@ def store_meal(db, analysis: dict, *, photos: list[bytes] | None, caption: str,
                ts: int | None = None, source: str = "telegram") -> int:
     """Insert a pending meal with its items and photos. Returns meal id."""
     ts = int(ts or time.time())
+    analysis["meal_type"] = meal_type_for(ts)
     t = analysis["totals"]
     cur = db.execute(
         "INSERT INTO meals(ts, caption, meal_type, kcal, protein_g, carbs_g, fat_g, fiber_g, confidence,"
@@ -217,6 +229,7 @@ async def extend_meal(db, meal_id: int, new_photos: list[bytes], new_caption: st
     analysis = await analyze_meal(prev["photos"] + new_photos, caption, llm=llm)
     if not analysis["is_food"]:
         raise AnalysisError("the new photo does not show food")
+    analysis["meal_type"] = meal_type_for(db.execute("SELECT ts FROM meals WHERE id=?", (meal_id,)).fetchone()[0])
     t = analysis["totals"]
     db.execute("UPDATE meals SET caption=?, meal_type=?, kcal=?, protein_g=?, carbs_g=?, fat_g=?, fiber_g=?,"
                " confidence=?, raw_json=? WHERE id=?",
@@ -256,6 +269,27 @@ def set_status(db, meal_id: int, status: str) -> bool:
     cur = db.execute("UPDATE meals SET status=? WHERE id=?", (status, meal_id))
     db.commit()
     return cur.rowcount == 1
+
+
+def delete_meal(db, meal_id: int) -> bool:
+    """Permanently remove a meal with its items and photos (for things sent by mistake)."""
+    db.execute("DELETE FROM meal_photos WHERE meal_id=?", (meal_id,))
+    db.execute("DELETE FROM meal_items WHERE meal_id=?", (meal_id,))
+    cur = db.execute("DELETE FROM meals WHERE id=?", (meal_id,))
+    db.commit()
+    return cur.rowcount == 1
+
+
+def retag_meals(db) -> int:
+    """Re-derive meal_type from the timestamp for meals stored when the model chose it."""
+    n = 0
+    for r in db.execute("SELECT id, ts, meal_type FROM meals").fetchall():
+        t = meal_type_for(r[1])
+        if r[2] != t:
+            db.execute("UPDATE meals SET meal_type=? WHERE id=?", (t, r[0]))
+            n += 1
+    db.commit()
+    return n
 
 
 def _cli():

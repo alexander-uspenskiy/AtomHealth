@@ -274,8 +274,9 @@ def test_commands_today_undo_weight_help(analyzed):
     texts = [m["text"] for m in run(go()).api.of("sendMessage") if m["text"] != "🔍 Analysing…"]
     assert "Nothing logged today" in texts[0]
     assert "458 kcal" in texts[1] and "1,542 left" in texts[1]
-    assert "80.0 kg" in texts[2] and "Discarded" in texts[3] and "Nothing to undo" in texts[4] and "/today" in texts[5]
-    assert appmod.db.execute("SELECT status FROM meals").fetchone()[0] == "discarded"
+    assert "80.0 kg" in texts[2] and "Deleted" in texts[3] and "Nothing to undo" in texts[4] and "/today" in texts[5]
+    for table in ("meals", "meal_items", "meal_photos"):      # undo removes the photos and data, not just hides them
+        assert appmod.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
 
 
 # ---------- transport: polling against a fake Telegram server ----------
@@ -410,3 +411,22 @@ def test_telegram_test_message_needs_running_bot():
     async def fn(c):
         return (await c.post("/api/settings/telegram/test")).status
     assert _api(fn) == 409
+
+
+def test_undo_removes_stale_advice_and_reports_balance(analyzed):
+    async def go():
+        bot, _ = make_bot()
+        await bot.handle_update(photo_msg())
+        mid, ts = appmod.db.execute("SELECT id, ts FROM meals").fetchone()
+        food.set_status(appmod.db, mid, "confirmed")
+        r = {"headline": "h", "text": "t", "used_llm": True}
+        from atomhealth import advisor
+        advisor.save_advice(appmod.db, "meal", r, meal_id=mid)
+        advisor.save_advice(appmod.db, "day", r)
+        advisor.save_advice(appmod.db, "ask", r, question="q")
+        await bot.handle_update(text_msg("/undo"))
+        return bot
+    bot = run(go())
+    assert [x[0] for x in appmod.db.execute("SELECT kind FROM advice")] == ["ask"]
+    last = bot.api.of("sendMessage")[-1]["text"]
+    assert "Today: 0" in last and "2 advice message(s)" in last

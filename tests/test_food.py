@@ -230,3 +230,28 @@ def test_api_stores_photos_in_db_serves_them_and_extends(monkeypatch):
     mid, s0, ct, n, s2, many = asyncio.run(go())
     assert seen == [2] and s0 == 200 and ct == "image/jpeg" and n > 0 and s2 == 404 and many == 422
     assert food.meal_photo_count(appmod.db, mid) == 2
+
+
+def test_meal_type_follows_the_clock_not_the_food():
+    import time
+    at = lambda h: time.mktime((2026, 11, 10, h, 30, 0, 0, 0, -1))
+    assert [food.meal_type_for(at(h)) for h in (2, 4, 8, 11, 15, 16, 18, 21, 23)] == [
+        "snack", "breakfast", "breakfast", "lunch", "lunch", "snack", "dinner", "dinner", "snack"]
+
+
+def test_store_meal_overrides_model_meal_type(tmp_path):
+    import sqlite3, time
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.executescript("""
+      CREATE TABLE meals(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, caption TEXT, meal_type TEXT,
+        kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL, fiber_g REAL, confidence REAL, status TEXT,
+        source TEXT, raw_json TEXT);
+      CREATE TABLE meal_items(id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER, name TEXT, grams REAL,
+        kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL);
+      CREATE TABLE meal_photos(id INTEGER PRIMARY KEY AUTOINCREMENT, meal_id INTEGER, idx INTEGER, mime TEXT, data BLOB);
+    """)
+    ts = int(time.mktime((2026, 11, 10, 19, 0, 0, 0, 0, -1)))
+    mid = food.store_meal(db, food.validate({**GOOD, "meal_type": "breakfast"}), photos=None, caption="", ts=ts)
+    assert db.execute("SELECT meal_type FROM meals WHERE id=?", (mid,)).fetchone()[0] == "dinner"
+    assert food.delete_meal(db, mid) and not food.delete_meal(db, mid)
