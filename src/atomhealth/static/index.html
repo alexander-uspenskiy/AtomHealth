@@ -527,7 +527,12 @@ function renderKpis() {
       const dd = a[k] - tg, hit = Math.abs(dd) <= 0.5, def = isDefault(k === 'weight' ? 'target_weight' : 'target_fat_pct');
       tline = `<div class="tgt ${hit ? 'hit' : ''}">🎯 ${fmt(tg, 1)}${k === 'weight' ? ' kg' : '%'} <span>${def ? 'optimal' : 'target'} · ${hit ? 'reached' : sgn(-dd, 1) + ' to go'}</span></div>`;
     }
-    return `<div class="kpi"${z ? ` data-z="${z.cls}" style="--kz:var(--${z.cls})"` : ''}><div class="l">${l}${z ? `<span class="chip ${z.cls}">${z.label}</span>` : ''}</div><div class="v">${fmt(a[k], dp)}<small>${u}</small></div><div class="d ${cls}">${d == null ? '&nbsp;' : sgn(d, dp) + ' since last'}</div>${tline}${spark(k)}</div>`;
+    // vs the average of readings in the 7 days before the latest one
+    const prior = R.slice(0, -1).filter(r => r.ts >= a.ts - 7 * DAY && r[k] != null).map(r => r[k]);
+    const da = a[k] != null && prior.length ? a[k] - prior.reduce((s, v) => s + v, 0) / prior.length : null;
+    const clsA = da == null || Math.abs(da) < 0.005 ? 't2' : da * good > 0 ? 'pos' : 'neg';
+    const avgLine = da == null ? '' : ` <span class="${clsA}" title="Latest vs average of the ${prior.length} reading${prior.length === 1 ? '' : 's'} in the previous 7 days">· ${sgn(da, dp)} vs 7-day avg</span>`;
+    return `<div class="kpi"${z ? ` data-z="${z.cls}" style="--kz:var(--${z.cls})"` : ''}><div class="l">${l}${z ? `<span class="chip ${z.cls}">${z.label}</span>` : ''}</div><div class="v">${fmt(a[k], dp)}<small>${u}</small></div><div class="d ${cls}">${d == null ? '&nbsp;' : sgn(d, dp) + ' since last'}${avgLine}</div>${tline}${spark(k)}</div>`;
   }).join('');
 }
 
