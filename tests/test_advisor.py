@@ -63,6 +63,29 @@ def test_weight_trend_slope_and_thin_data():
     assert advisor.weight_trend(appmod.db, NOW) is None
 
 
+PROFILE = {"sex": "male", "age": 35, "height_cm": 175}
+
+
+def test_body_trends_summarise_weight_bmi_and_composition():
+    add_weights(82, -0.7, days=30)                      # losing 0.7 kg/week for a month
+    t = advisor.body_trends(appmod.db, PROFILE, NOW)
+    w7, w30 = t["last_7_days"], t["last_30_days"]
+    assert w30["weight"]["direction"] == "down" and w30["weight"]["change"] == pytest.approx(-3.0, abs=0.2)
+    assert w7["weight"]["change"] == pytest.approx(-0.7, abs=0.15)
+    for f in ("bmi", "fat_pct", "fat_kg", "lean_kg", "muscle_kg", "water_pct"):
+        assert f in w30
+    assert w30["fat_kg"]["change"] < 0 and w30["bmi"]["change"] < 0
+    s = advisor.snapshot(appmod.db, PROFILE, PLAN, 79.0, NOW)
+    assert s["body_trends"]["last_30_days"]["weight"]["now"] == w30["weight"]["now"]
+    assert "body_trends" in advisor._prompt("week", s)
+
+
+def test_body_trends_none_when_too_little_data():
+    appmod.db.execute("INSERT INTO readings(ts, weight) VALUES(?,80)", (int(NOW),))
+    appmod.db.commit()
+    assert advisor.body_trends(appmod.db, PROFILE, NOW) == {"last_7_days": None, "last_30_days": None}
+
+
 def _series(kcal, complete=7):
     return [{"date": str(i), "kcal": kcal if i < complete else 0, "protein_g": 0, "meals": 1} for i in range(14)] + [
         {"date": "today", "kcal": 0, "protein_g": 0, "meals": 0}]

@@ -12,7 +12,7 @@ import time
 from datetime import datetime, timedelta
 
 from . import food
-from .bodycomp import KCAL_PER_KG
+from .bodycomp import KCAL_PER_KG, compute as body_compute
 from .llm import LLM, LLMError
 
 COMPLETE_DAY_KCAL = 800        # a day only counts as "fully logged" above this
@@ -31,6 +31,11 @@ actually eats (recent_foods). No generic lectures.
 - If suggested_target is present, mention it exactly as given and say why in one sentence.
 - Encouraging, not preachy. No medical claims or diagnosis. If something looks unsafe, suggest talking to a \
 doctor or dietitian.
+- body_trends summarises weight, BMI and the estimated body composition (fat %, fat kg, lean kg, muscle kg, \
+water %) over 7 and 30 days: 'now', 'change' (negative = down) and 'direction'. Mention the relevant trends \
+briefly for the day/week review (e.g. weight and fat down, lean mass stable) and tie them to the advice. \
+Fat %, lean and muscle are formula ESTIMATES from weight, height, age and sex, so treat them as direction \
+only. A null window means too little data: do not guess it.
 - If few days are logged (days_logged), say the advice will sharpen with more logging.
 - Plain text only: no markdown, no headings, no bullet symbols other than '-'. At most one emoji.
 - Reply in the language of the user's question if there is one, otherwise English.
@@ -70,6 +75,40 @@ def weight_trend(db, now=None, days=14):
         return None
     slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx      # kg per day
     return {"kg_per_week": round(slope * 7, 2), "readings": len(rows), "span_days": round(span, 1)}
+
+
+TREND_FIELDS = ("weight", "bmi", "fat_pct", "fat_kg", "lean_kg", "muscle_kg", "water_pct")
+TREND_FLAT = {"weight": 0.2, "bmi": 0.1, "fat_pct": 0.2, "fat_kg": 0.2, "lean_kg": 0.2, "muscle_kg": 0.2,
+              "water_pct": 0.3}      # changes smaller than this are called "stable" (scale noise)
+
+
+def body_trends(db, profile, now=None, windows=(7, 30)):
+    """Weight/BMI/body-composition summary per window: latest value, change vs the window start
+    (daily means, so one noisy weigh-in does not dominate) and direction. Window is None if < 2 days of data."""
+    now = now or time.time()
+    out = {}
+    for days in windows:
+        rows = db.execute("SELECT ts, weight FROM readings WHERE ts>=? AND ts<=? ORDER BY ts",
+                          (now - days * 86400, now)).fetchall()
+        byday = {}
+        for ts, w in rows:
+            byday.setdefault(datetime.fromtimestamp(ts).strftime("%Y-%m-%d"), []).append(w)
+        if len(byday) < 2:
+            out[f"last_{days}_days"] = None
+            continue
+        means = [sum(v) / len(v) for _, v in sorted(byday.items())]
+        first, last = body_compute(means[0], profile), body_compute(means[-1], profile)
+        if not first or not last:
+            out[f"last_{days}_days"] = None
+            continue
+        first["weight"], last["weight"] = round(means[0], 1), round(means[-1], 1)
+        d = {"days_with_readings": len(means)}
+        for f in TREND_FIELDS:
+            ch = round(last[f] - first[f], 1)
+            d[f] = {"from": first[f], "now": last[f], "change": ch,
+                    "direction": "stable" if abs(ch) < TREND_FLAT[f] else "up" if ch > 0 else "down"}
+        out[f"last_{days}_days"] = d
+    return out
 
 
 def safety_floor(plan):
@@ -137,7 +176,7 @@ def snapshot(db, profile, plan, weight, now=None, meal=None):
                         for d in week],
         "days_logged": len(logged),
         "avg_kcal_logged_days": round(sum(d["kcal"] for d in logged) / len(logged)) if logged else None,
-        "weight_trend": trend, "real_maintenance": real,
+        "weight_trend": trend, "body_trends": body_trends(db, profile, now), "real_maintenance": real,
         "suggested_target": suggest_target(plan, real),
         "recent_foods": recent_foods(db, now),
     }
