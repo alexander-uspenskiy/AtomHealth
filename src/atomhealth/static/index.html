@@ -252,6 +252,11 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
 .stale { background:color-mix(in srgb,var(--z4) 16%,transparent); border-radius:10px; padding:8px 12px; font-size:12.5px; margin-bottom:8px; }
 .nind.idx { margin-top:-2px; } .ni .split { display:flex; height:9px; border-radius:99px; overflow:hidden; margin:7px 0 4px; background:var(--surface); }
 .ni .split i { display:block; height:100%; }
+.ni { position:relative; }
+.ni .info { position:relative; width:15px; height:15px; margin-left:4px; padding:0; border-radius:50%; border:1px solid var(--muted); background:none; color:var(--muted); font:italic 700 10px/13px Georgia,serif; cursor:pointer; vertical-align:1px; }
+.ni .info:hover, .ni .info:focus-visible, .ni .info.open { color:var(--text); border-color:var(--text); }
+.ni .info .tip { display:none; position:absolute; z-index:20; top:20px; left:-8px; width:max-content; max-width:min(260px,70vw); padding:9px 11px; border-radius:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:0 6px 20px rgba(0,0,0,.35); font:400 12px/1.45 inherit; font-style:normal; text-align:left; white-space:normal; }
+.ni .info:hover .tip, .ni .info:focus-visible .tip, .ni .info.open .tip { display:block; }
 </style>
 </head>
 <body>
@@ -781,7 +786,20 @@ function renderNidx(done) {
   const share = mk ? [4 * P / mk, 4 * C / mk, 9 * F / mk].map(x => Math.round(x * 100)) : null;
   const plan = ['protein', 'carbs', 'fat'].map(k => (n.macros.find(m => m.key === k) || {}).pct || 0);
   const dev = share ? Math.max(...share.map((x, i) => Math.abs(x - plan[i]))) : 0;
-  tiles.push(`<div class="ni ${share ? (dev <= 5 ? 'ok' : dev <= 10 ? 'warn' : 'over') : 'low'}"><div class="l"><span>Macro split</span><b>${share ? (dev <= 5 ? 'balanced' : dev <= 10 ? 'drifting' : 'off plan') : 'no data'}</b></div>` +
+  // (i) hint: what the tile compares, and the one change that moves it toward plan.
+  let tip = 'Share of today\'s calories from protein / carbs / fat, compared with your plan. Green: within 5 points of plan on every macro. Amber: up to 10. Red: more than 10.';
+  if (share) {
+    const kc = [4 * P, 4 * C, 9 * F], names = ['protein', 'carbs', 'fat'], per = [4, 4, 9];
+    const gaps = share.map((x, i) => x - plan[i]), lo = gaps.indexOf(Math.min(...gaps)), hi = gaps.indexOf(Math.max(...gaps));
+    const need = Math.max(0, (plan[lo] / 100 * mk - kc[lo]) / (1 - plan[lo] / 100) / per[lo]);
+    if (dev <= 5) tip += ' You are on plan: keep meals balanced like this.';
+    else {
+      tip += ` To fix: add ~${Math.round(need)} g more ${names[lo]} (${share[lo]}% vs plan ${plan[lo]}%)` + (gaps[hi] > 5 ? `, and go lighter on ${names[hi]} (${share[hi]}% vs plan ${plan[hi]}%)` : '') + '.';
+      if (n.kcal && mk < 0.4 * n.kcal) tip += ' It is still early in the day: one carb-heavy snack skews the split, and it evens out as you log more meals.';
+    }
+  }
+  const info = `<button type="button" class="info" aria-label="About this card" aria-expanded="false">i<span class="tip" role="tooltip">${esc(tip)}</span></button>`;
+  tiles.push(`<div class="ni ${share ? (dev <= 5 ? 'ok' : dev <= 10 ? 'warn' : 'over') : 'low'}"><div class="l"><span>Macro split ${info}</span><b>${share ? (dev <= 5 ? 'balanced' : dev <= 10 ? 'drifting' : 'off plan') : 'no data'}</b></div>` +
     `<div class="v">${share ? share.join(' / ') : '—'}<small> % P/C/F</small></div>` +
     `<div class="split" title="Today">${share ? share.map((x, i) => `<i class="m-${['protein', 'carbs', 'fat'][i]}" style="width:${x}%"></i>`).join('') : ''}</div><div class="d">plan ${plan.join(' / ')} %</div></div>`);
   const kgT = n.protein_per_kg, kg = n.weight ? P / n.weight : 0, ks = nState(kgT ? kg / kgT : 0, 'reach');
@@ -794,6 +812,12 @@ function renderNidx(done) {
   tiles.push(`<div class="ni ${as}"><div class="l"><span>7-day average</span><b>${dv.length ? ({ low: 'under plan', ok: 'on target', warn: 'near limit', over: 'over' })[as] : 'no data'}</b></div><div class="v">${Math.round(avg)}<small> kcal/day</small></div><div class="d">${dv.length} logged day${dv.length === 1 ? '' : 's'} · plan ${n.kcal} kcal</div></div>`);
   box.innerHTML = tiles.join('');
 }
+// Tap/click toggles the (i) hint (hover and keyboard focus work via CSS); any other click closes it.
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.ni .info');
+  document.querySelectorAll('.ni .info.open').forEach(x => { if (x !== b) { x.classList.remove('open'); x.setAttribute('aria-expanded', 'false'); } });
+  if (b) { const o = b.classList.toggle('open'); b.setAttribute('aria-expanded', o); }
+});
 function renderToday() {
   const t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const M = (S.meals || []).filter(m => m.ts >= t0 / 1000), done = M.filter(m => m.status === 'confirmed');
