@@ -293,7 +293,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
     <div class="kpis" id="kpis"></div>
   </div>
 
-  <div class="card"><div class="card-h"><div><h2>Weight</h2><p class="sub">Shaded area = healthy range (BMI 18.5–25) · dashed = optimal and your target</p></div></div><div class="chart-box"><canvas id="cW"></canvas></div></div>
+  <div class="card" id="weightCard"><div id="weightGauge"></div></div>
 
   <div class="card" id="coachCard">
     <div class="card-h"><div><h2>Coach</h2><p class="sub" id="coachSub">Advice for today from what you have eaten and your weight trend</p></div>
@@ -325,6 +325,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
     <div class="pills" id="range"><button data-d="30" aria-pressed="false">30 days</button><button data-d="90" aria-pressed="false">90 days</button><button data-d="365" aria-pressed="false">1 year</button><button data-d="0" aria-pressed="true">All time</button></div>
   </div>
   <div class="charts">
+    <div class="card wide"><div class="card-h"><div><h2>Weight</h2><p class="sub">Shaded area = healthy range (BMI 18.5–25) · dashed = optimal and your target</p></div></div><div class="chart-box"><canvas id="cW"></canvas></div></div>
     <div class="card"><div class="card-h"><div><h2>Body fat</h2><p class="sub">Shaded = healthy range for your age and sex</p></div></div><div class="chart-box"><canvas id="cF"></canvas></div></div>
     <div class="card"><div class="card-h"><div><h2>Body composition</h2><p class="sub">Fat, lean and estimated muscle mass (kg)</p></div></div><div class="chart-box"><canvas id="cC"></canvas></div></div>
     <div class="card"><div class="card-h"><div><h2>BMI</h2><p class="sub">Shaded = healthy (18.5–25)</p></div></div><div class="chart-box"><canvas id="cB"></canvas></div></div>
@@ -471,7 +472,7 @@ function showTab(name) {
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
   document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'v-' + name);
   try { history.replaceState(null, '', '#' + name); } catch (e) {}
-  if (name === 'trends' || name === 'overview') renderCharts();
+  if (name === 'trends') renderCharts();
   if (name === 'settings' && typeof loadCfg === 'function') loadCfg(false);
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
@@ -559,7 +560,7 @@ function gauge({ name, value, unit = '', dp = 1, min, max, zones, refs = [], not
 }
 
 function renderGauges() {
-  if (!S.readings.length || !hM()) { $('gauges').innerHTML = '<div class="empty">Add your height in Settings and take a measurement to see your position on each scale.</div>'; return; }
+  if (!S.readings.length || !hM()) { $('weightGauge').innerHTML = ''; $('weightCard').hidden = true; $('gauges').innerHTML = '<div class="empty">Add your height in Settings and take a measurement to see your position on each scale.</div>'; return; }
   const a = last(), ref = S.ref, opt = S.optimal, pr = S.profile;
   const [hl, hh] = S.healthy_range;
   // 1) weight in kg, zones derived from BMI cut-offs
@@ -570,7 +571,9 @@ function renderGauges() {
               `Within your healthy range of ${hl}–${hh} kg. ${Math.abs(toOpt) < 0.5 ? 'You are at your optimal weight.' : (toOpt > 0 ? toOpt.toFixed(1) + ' kg above' : (-toOpt).toFixed(1) + ' kg below') + ' your optimal weight of ' + opt.weight + ' kg.'}`;
   const wRefs = [{ v: opt.weight, label: 'optimal ' + opt.weight }];
   if (pr.target_weight && Math.abs(pr.target_weight - opt.weight) > 1) wRefs.push({ v: pr.target_weight, label: 'target ' + pr.target_weight });
-  let html = gauge({ name: 'Weight', value: a.weight, unit: 'kg', dp: 2, min: bmiKg(15), max: bmiKg(40), zones: wZones, refs: wRefs, note: wNote, tgt: `${tgtW()} kg ${isDefault('target_weight') ? 'optimal' : 'target'}` });
+  $('weightCard').hidden = false;
+  $('weightGauge').innerHTML = gauge({ name: 'Weight', value: a.weight, unit: 'kg', dp: 2, min: bmiKg(15), max: bmiKg(40), zones: wZones, refs: wRefs, note: wNote, tgt: `${tgtW()} kg ${isDefault('target_weight') ? 'optimal' : 'target'}` });
+  let html = '';
   // 2) BMI
   html += gauge({ name: 'Body Mass Index', value: a.bmi, min: 15, max: 40, zones: ref.bmi_zones, refs: [{ v: 22, label: 'optimal 22' }], tgt: '22 optimal', note: 'WHO classification. BMI ignores muscle mass, so read it together with body fat.' });
   // 3) body fat
@@ -1137,7 +1140,7 @@ function mk(id, datasets, { bands, sugMin, sugMax, unit = '' } = {}) {
   });
 }
 function renderCharts() {
-  if (!S || ($('v-trends').hidden && $('v-overview').hidden)) return;
+  if (!S || $('v-trends').hidden) return;
   const cutoff = rangeDays ? Date.now() / 1000 - rangeDays * DAY : 0, acc = css('--accent');
   const hr = S.healthy_range, op = S.optimal;
   const w = pts('weight', cutoff);
