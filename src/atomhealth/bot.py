@@ -14,7 +14,7 @@ import aiohttp
 
 from datetime import datetime
 
-from . import advisor, food
+from . import advisor, food, intent
 from .llm import LLMError
 
 log = logging.getLogger("atomhealth.bot")
@@ -27,8 +27,13 @@ SWEEP_EVERY = 15
 HELP = ("<b>AtomHealth food bot</b>\n"
         "📸 Send a photo of your meal (add a caption like “200 g rice, homemade” for accuracy).\n"
         "➕ Send more photos or a note within a few minutes to add them to the same meal.\n"
-        "✍️ Or just describe it: “2 eggs and toast”.\n\n"
-        "/today – meals and calories so far today\n"
+        "✍️ Or just describe it: “2 eggs and toast”.\n"
+        "💬 Everything below also works in plain words: “what did I eat today?”, “delete the potato”, "
+        "“the rice was 150 g”, “what should I eat for dinner?”.\n\n"
+        "/today – today's dishes with kcal, calculation, statistics and the day's advice\n"
+        "/history – meals of the last 12 hours\n"
+        "/edit <#> <what it really was> – correct a meal (last 12 h)\n"
+        "/delete <#> – delete a meal (last 12 h)\n"
         "/advice – coaching tip for today\n"
         "/week – weekly review and calorie-target check\n"
         "/ask <question> – ask the coach about your diet\n"
@@ -296,6 +301,9 @@ class TelegramBot:
         if text.startswith("/"):
             head, _, args = text.partition(" ")
             return await self._command(chat_id, head.split("@")[0].lower(), frm.get("first_name"), args)
+        if text and not (m.get("photo") or m.get("document")):
+            if await self._plain_text(chat_id, text, frm.get("first_name")):
+                return
         fid = None
         if m.get("photo"):
             fid = m["photo"][-1]["file_id"]
@@ -373,25 +381,13 @@ class TelegramBot:
         if cmd == "/help":
             return await self._send(chat_id, HELP)
         if cmd == "/today":
-            start = food.day_start()
-            rows = food.meals_between(self.db, start, start + 86400)
-            pending = food.meals_between(self.db, start, start + 86400, "pending")
-            if not rows and not pending:
-                return await self._send(chat_id, "Nothing logged today yet. Send me a photo of your meal 📸")
-            lines = ["📅 <b>Today</b>"]
-            for r in rows:
-                lines.append(f"• {time.strftime('%H:%M', time.localtime(r['ts']))} "
-                             f"{esc((r['meal_type'] or 'meal').capitalize())} — {kcal_fmt(r['kcal'])} kcal")
-            t = food.sum_meals(rows)
-            lines.append(f"\n<b>{kcal_fmt(t['kcal'])} kcal</b> · P {t['protein_g']:.0f} g · "
-                         f"C {t['carbs_g']:.0f} g · F {t['fat_g']:.0f} g")
-            tgt = self.target_kcal()
-            if tgt:
-                left = tgt - t["kcal"]
-                lines.append(f"Target {kcal_fmt(tgt)} kcal → {kcal_fmt(abs(left))} {'left' if left >= 0 else 'over'}")
-            if pending:
-                lines.append(f"\n⏳ {len(pending)} meal(s) waiting for Save (not counted).")
-            return await self._send(chat_id, "\n".join(lines))
+            return await self._send(chat_id, self._today_text())
+        if cmd == "/history":
+            return await self._send(chat_id, self._history_text())
+        if cmd == "/delete":
+            return await self._delete_cmd(chat_id, args)
+        if cmd == "/edit":
+            return await self._edit_cmd(chat_id, args)
         if cmd == "/undo":
             r = food.last_meal(self.db, "telegram")
             if not r:
@@ -406,15 +402,7 @@ class TelegramBot:
                 except TelegramError:
                     pass
             self.notify()
-            start = food.day_start()
-            eaten = food.sum_meals(food.meals_between(self.db, start, start + 86400))["kcal"]
-            tgt = self.target_kcal()
-            bal = f"Today: {kcal_fmt(eaten)}"
-            if tgt:
-                left = tgt - eaten
-                bal += f" / {kcal_fmt(tgt)} kcal ({kcal_fmt(abs(left))} {'left' if left >= 0 else 'over'})"
-            else:
-                bal += " kcal"
+            bal = self._balance_line()
             note = f"\n🧹 Removed {dropped} advice message(s) that included it. /advice makes a fresh one." if dropped else ""
             return await self._send(chat_id, f"🗑 Deleted {esc((r['meal_type'] or 'meal'))} ({kcal_fmt(r['kcal'])} kcal) "
                                              f"with its photos and data.\n{bal}{note}")
@@ -424,6 +412,145 @@ class TelegramBot:
                 return await self._send(chat_id, "No weight reading yet.")
             return await self._send(chat_id, f"⚖️ <b>{w[0]:.1f} kg</b> · {time.strftime('%d %b %H:%M', time.localtime(w[1]))}")
         await self._send(chat_id, "Unknown command. /help")
+
+    async def _plain_text(self, chat_id, text, name):
+        """Every command in plain words. Returns True when handled; False means 'treat it as a meal'."""
+        meals = [{"id": r["id"], "time": time.strftime("%H:%M", time.localtime(r["ts"])),
+                  "dishes": ", ".join(d["name"] for d in food.meal_dishes(self.db, r["id"])) or "meal",
+                  "kcal": round(r["kcal"] or 0)} for r in food.recent_meals(self.db)]
+        try:
+            r = await intent.classify(text, meals, open_session=bool(self._session_open(self.sessions.get(chat_id))))
+        except LLMError:
+            r = intent.fallback(text)
+        kind = r["intent"]
+        if kind == "log":
+            return False
+        if kind == "ask":
+            await self._coach(chat_id, "ask", question=text[:500])
+        elif kind in ("delete", "edit"):
+            if r["meal_id"] is None:
+                await self._send(chat_id, "Which meal? I could not tell.\n\n" + self._history_text())
+            elif kind == "edit":
+                await self._edit_cmd(chat_id, f"{r['meal_id']} {r['text'] or text}")
+            else:
+                await self._confirm_delete(chat_id, r["meal_id"])
+        else:
+            await self._command(chat_id, "/" + kind, name)
+        return True
+
+    async def _confirm_delete(self, chat_id, meal_id):
+        """Deleting from free text is guessed from words, so ask before anything is removed."""
+        row, err, _ = self._editable(str(meal_id))
+        if err:
+            return await self._send(chat_id, err)
+        await self._send(chat_id, f"Delete <b>#{row['id']}</b> {self._dishes(row['id'])} ({kcal_fmt(row['kcal'])} kcal)?",
+                         reply_markup={"inline_keyboard": [[{"text": "🗑 Yes, delete", "callback_data": f"xdel:{row['id']}"},
+                                                             {"text": "Keep it", "callback_data": f"keep:{row['id']}"}]]})
+
+    def _balance_line(self):
+        start = food.day_start()
+        eaten = food.sum_meals(food.meals_between(self.db, start, start + 86400))["kcal"]
+        tgt = self.target_kcal()
+        bal = f"Today: {kcal_fmt(eaten)}"
+        if tgt:
+            left = tgt - eaten
+            return bal + f" / {kcal_fmt(tgt)} kcal ({kcal_fmt(abs(left))} {'left' if left >= 0 else 'over'})"
+        return bal + " kcal"
+
+    def _dishes(self, meal_id, width=28):
+        names = [d["name"] if len(d["name"]) <= width else d["name"][:width - 1].rstrip() + "…"
+                 for d in food.meal_dishes(self.db, meal_id)]
+        return ", ".join(esc(n) for n in names) or "meal"
+
+    def _today_text(self):
+        """Dishes with kcal, the day's calculation and statistics, and the day's advice (if still valid)."""
+        start = food.day_start()
+        rows = food.meals_between(self.db, start, start + 86400)
+        pending = food.meals_between(self.db, start, start + 86400, "pending")
+        if not rows and not pending:
+            return "Nothing logged today yet. Send me a photo of your meal 📸"
+        lines = ["📅 <b>Today</b>"]
+        for r in rows:
+            lines.append(f"• {time.strftime('%H:%M', time.localtime(r['ts']))} "
+                         f"{esc((r['meal_type'] or 'meal').capitalize())} — {self._dishes(r['id'])} · {kcal_fmt(r['kcal'])} kcal")
+        t = food.sum_meals(rows)
+        lines.append(f"\n<b>{kcal_fmt(t['kcal'])} kcal</b> · P {t['protein_g']:.0f} g · "
+                     f"C {t['carbs_g']:.0f} g · F {t['fat_g']:.0f} g · fibre {t['fiber_g']:.0f} g")
+        tgt = self.target_kcal()
+        if tgt:
+            left = tgt - t["kcal"]
+            lines.append(f"Target {kcal_fmt(tgt)} kcal → {kcal_fmt(abs(left))} {'left' if left >= 0 else 'over'}")
+        p = self.plan() or {}
+        macro = {m["key"]: m["g"] for m in p.get("macros", [])}
+        if macro:
+            lines.append(f"Targets: P {macro.get('protein', 0):.0f} g · C {macro.get('carbs', 0):.0f} g · "
+                         f"F {macro.get('fat', 0):.0f} g" + (f" · fibre {p['limits']['fiber_g']:.0f} g" if (p.get("limits") or {}).get("fiber_g") else ""))
+        if pending:
+            lines.append(f"\n⏳ {len(pending)} meal(s) waiting for Save (not counted).")
+        day = next((a for a in advisor.feed(self.db)["today"] if a["kind"] == "day"), None)
+        lines.append("\n💡 <b>Advice</b>\n" + (esc(day["headline"]) + "\n" + esc(day["text"])[:1500] if day
+                                              else "None for the current meals yet. /advice writes one."))
+        return "\n".join(lines)
+
+    def _history_text(self):
+        rows = food.recent_meals(self.db)
+        if not rows:
+            return "No meals in the last 12 hours."
+        lines = ["🕑 <b>Last 12 hours</b>"]
+        for r in rows:
+            flag = " ⏳" if r["status"] == "pending" else ""
+            lines.append(f"<b>#{r['id']}</b> {time.strftime('%H:%M', time.localtime(r['ts']))} "
+                         f"{esc((r['meal_type'] or 'meal').capitalize())} — {self._dishes(r['id'])} · {kcal_fmt(r['kcal'])} kcal{flag}")
+        lines += ["", "<code>/edit &lt;#&gt; what it really was</code>   <code>/delete &lt;#&gt;</code>",
+                  "Only meals from the last 12 hours can be changed."]
+        return "\n".join(lines)
+
+    def _editable(self, args):
+        """(meal row, rest of the arguments) or (None, error text)."""
+        head, _, rest = args.strip().partition(" ")
+        try:
+            mid = int(head.lstrip("#"))
+        except ValueError:
+            return None, "Give the meal number from /history, e.g. <code>/delete 12</code>.", ""
+        row = self.db.execute("SELECT * FROM meals WHERE id=? AND status!='discarded'", (mid,)).fetchone()
+        if not row:
+            return None, f"No meal #{mid}. See /history.", ""
+        if time.time() - row["ts"] > food.EDIT_WINDOW_SECS:
+            return None, f"Meal #{mid} is older than 12 hours and can no longer be changed.", ""
+        return row, None, rest.strip()
+
+    def _forget_session(self, chat_id, meal_id):
+        for cid, s in list(self.sessions.items()):
+            if s["meal_id"] == meal_id:
+                self.sessions.pop(cid)
+
+    async def _delete_cmd(self, chat_id, args):
+        row, err, _ = self._editable(args)
+        if err:
+            return await self._send(chat_id, err)
+        dropped = advisor.purge_for_meal(self.db, row["id"], row["ts"])
+        dishes = self._dishes(row["id"])
+        food.delete_meal(self.db, row["id"])
+        self._forget_session(chat_id, row["id"])
+        self.notify()
+        note = "\n🧹 The advice that included it was removed. /advice makes a fresh one." if dropped else ""
+        await self._send(chat_id, f"🗑 Deleted #{row['id']} ({dishes}, {kcal_fmt(row['kcal'])} kcal).\n{self._balance_line()}{note}")
+
+    async def _edit_cmd(self, chat_id, args):
+        row, err, text = self._editable(args)
+        if err:
+            return await self._send(chat_id, err)
+        if not text:
+            return await self._send(chat_id, f"Say what it really was, e.g. <code>/edit {row['id']} 150 g mashed potato with butter</code>")
+        note = await self._send(chat_id, "🔍 Re-calculating…")
+        try:
+            await food.reanalyze_meal(self.db, row["id"], text[:500])
+        except (food.AnalysisError, LLMError) as e:
+            return await self._edit(chat_id, note["message_id"], f"⚠️ Could not change it: {esc(e)}")
+        advisor.purge_for_meal(self.db, row["id"], row["ts"])   # day advice was based on the old numbers
+        self.notify()
+        msg, kb = self._render_meal_row(row["id"])
+        await self._edit(chat_id, note["message_id"], f"✏️ <b>Updated #{row['id']}</b>\n\n{msg}", kb)
 
     async def _on_callback(self, cq):
         if not self._allowed((cq.get("from") or {}).get("id")):
@@ -435,6 +562,12 @@ class TelegramBot:
             mid = int(mid)
         except ValueError:
             return await self.api.call("answerCallbackQuery", callback_query_id=cq["id"])
+        if action in ("xdel", "keep"):
+            await self.api.call("answerCallbackQuery", callback_query_id=cq["id"])
+            if action == "keep":
+                return await self._edit(chat_id, msg_id, "👍 Kept.")
+            await self._edit(chat_id, msg_id, "✅ Confirmed.")
+            return await self._delete_cmd(chat_id, str(mid))
         if action == "tip":
             await self.api.call("answerCallbackQuery", callback_query_id=cq["id"], text="Thinking…")
             meal = self._meal_analysis(mid)

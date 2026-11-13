@@ -218,6 +218,17 @@ def meal_inputs(db, meal_id: int):
     return {"caption": row[0] or "", "photos": photos}
 
 
+def _apply_analysis(db, meal_id: int, analysis: dict, caption: str):
+    """Overwrite a stored meal (totals, items, raw analysis) with a new analysis. Status and time stay."""
+    analysis["meal_type"] = meal_type_for(db.execute("SELECT ts FROM meals WHERE id=?", (meal_id,)).fetchone()[0])
+    t = analysis["totals"]
+    db.execute("UPDATE meals SET caption=?, meal_type=?, kcal=?, protein_g=?, carbs_g=?, fat_g=?, fiber_g=?,"
+               " confidence=?, raw_json=? WHERE id=?",
+               (caption or None, analysis["meal_type"], t["kcal"], t["protein_g"], t["carbs_g"], t["fat_g"],
+                t["fiber_g"], analysis["confidence"], json.dumps(analysis), meal_id))
+    _write_items(db, meal_id, analysis)
+
+
 async def extend_meal(db, meal_id: int, new_photos: list[bytes], new_caption: str,
                       llm: LLM | None = None) -> dict:
     """Add photos/notes to a still-pending meal and re-analyse the whole session together."""
@@ -229,14 +240,37 @@ async def extend_meal(db, meal_id: int, new_photos: list[bytes], new_caption: st
     analysis = await analyze_meal(prev["photos"] + new_photos, caption, llm=llm)
     if not analysis["is_food"]:
         raise AnalysisError("the new photo does not show food")
-    analysis["meal_type"] = meal_type_for(db.execute("SELECT ts FROM meals WHERE id=?", (meal_id,)).fetchone()[0])
-    t = analysis["totals"]
-    db.execute("UPDATE meals SET caption=?, meal_type=?, kcal=?, protein_g=?, carbs_g=?, fat_g=?, fiber_g=?,"
-               " confidence=?, raw_json=? WHERE id=?",
-               (caption or None, analysis["meal_type"], t["kcal"], t["protein_g"], t["carbs_g"], t["fat_g"],
-                t["fiber_g"], analysis["confidence"], json.dumps(analysis), meal_id))
-    _write_items(db, meal_id, analysis)
+    _apply_analysis(db, meal_id, analysis, caption)
     _save_photos(db, meal_id, new_photos, start_idx=len(prev["photos"]))
+    db.commit()
+    return analysis
+
+
+EDIT_WINDOW_SECS = 12 * 3600  # meals may be edited or deleted from chat for this long after they were eaten
+
+
+def recent_meals(db, now=None, window=EDIT_WINDOW_SECS):
+    """Meals (saved or pending, not discarded) from the last `window` seconds, oldest first."""
+    now = now or time.time()
+    return db.execute("SELECT * FROM meals WHERE status!='discarded' AND ts>=? AND ts<=? ORDER BY ts, id",
+                      (now - window, now + 60)).fetchall()
+
+
+def meal_dishes(db, meal_id: int) -> list:
+    return db.execute("SELECT name, grams, kcal FROM meal_items WHERE meal_id=? ORDER BY id", (meal_id,)).fetchall()
+
+
+async def reanalyze_meal(db, meal_id: int, text: str, llm: LLM | None = None) -> dict:
+    """Correct a stored meal: re-analyse its photos together with the user's description of what it really
+    was (the new text replaces the old caption). Keeps the time and saved/pending status."""
+    row = db.execute("SELECT status FROM meals WHERE id=?", (meal_id,)).fetchone()
+    if not row or row[0] == "discarded":
+        raise AnalysisError("meal not found")
+    photos = [bytes(r[0]) for r in db.execute("SELECT data FROM meal_photos WHERE meal_id=? ORDER BY idx", (meal_id,))]
+    analysis = await analyze_meal(photos, text.strip(), llm=llm)
+    if not analysis["is_food"]:
+        raise AnalysisError("that does not describe food")
+    _apply_analysis(db, meal_id, analysis, text.strip())
     db.commit()
     return analysis
 

@@ -134,7 +134,10 @@ def test_snapshot_with_meal_adds_meal_headline():
     meal = {"meal_type": "lunch", "totals": {"kcal": 760}, "items": [{"name": "pizza", "grams": 300, "kcal": 760}]}
     s = advisor.snapshot(appmod.db, {"sex": "male"}, PLAN, 80, NOW, meal=meal)
     assert s["this_meal"]["items"][0]["name"] == "pizza"
-    assert "This meal: 760 kcal (40% of your daily target)." in advisor.headline("meal", s)
+    head = advisor.headline("meal", s)
+    assert "This meal: 760 kcal (40% of your daily target)." in head
+    # stored meal tips are snapshots: they must not pose as the current day total
+    assert "After this meal:" in head and "Today:" not in head
 
 
 def _llm_server(handler):

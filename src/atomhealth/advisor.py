@@ -156,6 +156,29 @@ def recent_foods(db, now=None, days=7, limit=12):
     return [{"name": r[0], "times": r[1], "kcal": round(r[2] or 0)} for r in rows]
 
 
+def today_meals(db, now=None):
+    """Today's saved meals with their dishes (short names) and kcal: lets the coach answer 'what should I eat?'."""
+    now = now or time.time()
+    start = food.day_start(now)
+    return [{"time": datetime.fromtimestamp(r["ts"]).strftime("%H:%M"), "type": r["meal_type"], "kcal": round(r["kcal"] or 0),
+             "dishes": [{"name": d["name"][:40], "kcal": round(d["kcal"] or 0)} for d in food.meal_dishes(db, r["id"])]}
+            for r in food.meals_between(db, start, start + 86400)]
+
+
+def left_today(plan, today):
+    """What is still available today against the targets (negative = already over)."""
+    if not plan or not plan.get("kcal"):
+        return None
+    macro = {m["key"]: m["g"] for m in plan.get("macros", [])}
+    out = {"kcal": round(plan["kcal"] - today["kcal"])}
+    if macro.get("protein"):
+        out["protein_g"] = round(macro["protein"] - today["protein_g"])
+    fib = (plan.get("limits") or {}).get("fiber_g")
+    if fib:
+        out["fibre_g"] = round(fib - today["fiber_g"])
+    return out
+
+
 def snapshot(db, profile, plan, weight, now=None, meal=None):
     """Everything the coach may talk about, with all numbers precomputed."""
     now = now or time.time()
@@ -179,6 +202,8 @@ def snapshot(db, profile, plan, weight, now=None, meal=None):
         "weight_trend": trend, "body_trends": body_trends(db, profile, now), "real_maintenance": real,
         "suggested_target": suggest_target(plan, real),
         "recent_foods": recent_foods(db, now),
+        "today_meals": today_meals(db, now),
+        "left_today": left_today(plan, series[-1]),
     }
     if meal:
         snap["this_meal"] = {"type": meal["meal_type"], "totals": meal["totals"],
@@ -201,7 +226,9 @@ def headline(kind, s):
         lines.append(f"This meal: {_k(m['kcal'])} kcal{share}.")
     if kind in ("meal", "day", "ask") or not tgt:
         left = f" · {_k(abs(tgt - t['kcal']))} {'left' if tgt >= t['kcal'] else 'over'}" if tgt else ""
-        lines.append(f"Today: {_k(t['kcal'])}{' / ' + _k(tgt) if tgt else ''} kcal{left} · protein {t['protein_g']:.0f} g")
+        # A meal tip is stored and never recalculated: label its numbers as a snapshot, not as today's total.
+        label = "After this meal" if kind == "meal" and s.get("this_meal") else "Today"
+        lines.append(f"{label}: {_k(t['kcal'])}{' / ' + _k(tgt) if tgt else ''} kcal{left} · protein {t['protein_g']:.0f} g")
     if kind == "week":
         if s["avg_kcal_logged_days"] is not None:
             lines.append(f"Last 7 days: average {_k(s['avg_kcal_logged_days'])} kcal on {s['days_logged']} logged day(s)"

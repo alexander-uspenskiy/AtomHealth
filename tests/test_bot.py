@@ -8,7 +8,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from PIL import Image
 
-from atomhealth import app as appmod, bot as botmod, config, food
+from atomhealth import advisor, app as appmod, bot as botmod, config, food, intent
 from atomhealth.llm import LLMError
 
 b = io.BytesIO()
@@ -57,6 +57,14 @@ def make_bot(**over):
                              kv_get=lambda k, d=None: kvs.get(k, d), kv_set=kvs.__setitem__)
     bot.api = FakeApi()
     return bot, cfg
+
+
+@pytest.fixture(autouse=True)
+def offline_router(monkeypatch):
+    """Plain-text routing never reaches a real model in tests: the offline fallback decides unless a test says otherwise."""
+    async def down(*a, **k):
+        raise LLMError("offline")
+    monkeypatch.setattr(intent, "classify", down)
 
 
 @pytest.fixture
@@ -277,6 +285,98 @@ def test_commands_today_undo_weight_help(analyzed):
     assert "80.0 kg" in texts[2] and "Deleted" in texts[3] and "Nothing to undo" in texts[4] and "/today" in texts[5]
     for table in ("meals", "meal_items", "meal_photos"):      # undo removes the photos and data, not just hides them
         assert appmod.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+
+
+def test_history_edit_delete_only_within_12_hours(analyzed):
+    async def go():
+        bot, _ = make_bot()
+        await bot.handle_update(photo_msg())
+        new = appmod.db.execute("SELECT id FROM meals").fetchone()[0]
+        food.set_status(appmod.db, new, "confirmed")
+        old = food.store_meal(appmod.db, food.validate(GOOD), photos=[], caption="", ts=int(time.time()) - 13 * 3600)
+        food.set_status(appmod.db, old, "confirmed")
+        advisor.save_advice(appmod.db, "day", {"headline": "H", "text": "T"})
+        await bot.handle_update(text_msg("/history"))
+        await bot.handle_update(text_msg("/today"))
+        await bot.handle_update(text_msg(f"/delete {old}"))          # too old
+        await bot.handle_update(text_msg(f"/edit {new}"))            # no text
+        await bot.handle_update(text_msg(f"/edit {new} 100 g of it"))
+        await bot.handle_update(text_msg("/delete x"))
+        await bot.handle_update(text_msg(f"/delete #{new}"))
+        return bot, new, old
+    bot, new, old = run(go())
+    texts = [m["text"] for m in bot.api.of("sendMessage") if m["text"] not in ("🔍 Analysing…", "🔍 Re-calculating…")]
+    assert f"#{new}" in texts[0] and f"#{old}" not in texts[0] and "kcal" in texts[0]
+    assert "Today" in texts[1] and "Advice" in texts[1] and "kcal" in texts[1]
+    assert "older than 12 hours" in texts[2] and "Say what it really was" in texts[3]
+    assert "meal number" in texts[4] and "Deleted" in texts[5]
+    assert any("Updated" in m["text"] for m in bot.api.of("editMessageText"))
+    left = [r[0] for r in appmod.db.execute("SELECT id FROM meals")]
+    assert left == [old]                                              # the old one survived, the new one is gone
+
+
+def test_plain_text_questions_go_to_the_coach_and_meals_still_get_logged(analyzed, monkeypatch):
+    asked = []
+
+    async def fake_coach(self, chat_id, kind, question=None, **kw):
+        asked.append((kind, question))
+
+    monkeypatch.setattr(botmod.TelegramBot, "_coach", fake_coach)
+
+    async def go():
+        bot, _ = make_bot()
+        await bot.handle_update(text_msg("what should I eat for dinner?"))
+        await bot.handle_update(text_msg("Can I have pasta tonight"))
+        await bot.handle_update(text_msg("2 eggs and toast"))
+        return bot
+    run(go())
+    assert asked == [("ask", "what should I eat for dinner?"), ("ask", "Can I have pasta tonight")]
+    assert meal_count() == 1 and analyzed[0]["caption"] == "2 eggs and toast"
+
+
+def test_everything_works_in_plain_words(analyzed, monkeypatch):
+    seen = {}
+
+    async def fake_coach(self, chat_id, kind, question=None, **kw):
+        seen["ask"] = question
+
+    monkeypatch.setattr(botmod.TelegramBot, "_coach", fake_coach)
+    answers = []
+
+    async def route(text, meals, open_session=False, llm=None):
+        seen.setdefault("meals", meals)
+        return answers.pop(0)
+
+    monkeypatch.setattr(intent, "classify", route)
+
+    async def go():
+        bot, _ = make_bot()
+        await bot.handle_update(photo_msg())
+        mid = appmod.db.execute("SELECT id FROM meals").fetchone()[0]
+        food.set_status(appmod.db, mid, "confirmed")
+        for ans, text in [({"intent": "today", "meal_id": None, "text": ""}, "what did I eat today"),
+                          ({"intent": "history", "meal_id": None, "text": ""}, "show my recent meals"),
+                          ({"intent": "ask", "meal_id": None, "text": ""}, "give me dinner ideas"),
+                          ({"intent": "edit", "meal_id": mid, "text": "100 g rice"}, "the rice was 100 g"),
+                          ({"intent": "delete", "meal_id": None, "text": ""}, "delete that thing"),
+                          ({"intent": "delete", "meal_id": mid, "text": ""}, "remove the rice"),
+                          ({"intent": "log", "meal_id": None, "text": ""}, "an apple")]:
+            answers.append(ans)
+            await bot.handle_update(text_msg(text))
+        n = meal_count()
+        await bot.handle_update({"update_id": 2, "callback_query": {"id": "c", "from": {"id": 42}, "data": f"xdel:{mid}",
+                                                                      "message": {"chat": {"id": 42}, "message_id": 5}}})
+        return bot, n
+    bot, n_before_confirm = run(go())
+    texts = [m["text"] for m in bot.api.of("sendMessage")]
+    assert any("Today" in t and "kcal" in t for t in texts) and any("Last 12 hours" in t for t in texts)
+    assert seen["ask"] == "give me dinner ideas" and seen["meals"][0]["kcal"] == 458
+    assert any("Which meal?" in t for t in texts)
+    prompts = [m for m in bot.api.of("sendMessage") if m.get("reply_markup")]
+    assert any("Yes, delete" in json.dumps(m["reply_markup"]) for m in prompts)   # nothing deleted before confirming
+    assert n_before_confirm == 2                                                  # the photo meal plus the logged apple
+    assert meal_count() == 1 and any("Deleted" in m["text"] for m in bot.api.of("sendMessage"))
+    assert any("Updated" in m["text"] for m in bot.api.of("editMessageText"))
 
 
 # ---------- transport: polling against a fake Telegram server ----------
