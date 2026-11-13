@@ -446,6 +446,10 @@ class TelegramBot:
             toast = "Already " + (cur or "gone")
         else:
             food.set_status(self.db, mid, "confirmed" if action == "save" else "discarded")
+            if action != "save":
+                m = self.db.execute("SELECT ts FROM meals WHERE id=?", (mid,)).fetchone()
+                if m:
+                    advisor.purge_for_meal(self.db, mid, m["ts"])
             toast = "Saved ✓" if action == "save" else "Discarded"
             s = self.sessions.get(chat_id)
             if s and s["meal_id"] == mid:

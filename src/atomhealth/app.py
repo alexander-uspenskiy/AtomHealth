@@ -32,6 +32,8 @@ DB_PATH = Path(os.environ.get("WEIGHT_DB", DATA_DIR / "weight.db"))
 SIG = bytes.fromhex("65f4dd2144")  # trailing payload bytes of this scale's adverts
 STABLE_SECS = 3.0
 MIN_KG = 20.0
+MAX_JUMP = 0.20  # ignore a reading that differs from the previous one by more than this fraction
+SCAN_STALL_SECS = 120.0  # restart the BLE scan after this long with no advertisements
 
 DEFAULT_PROFILE = {
     "height_cm": 174, "age": 30, "birthdate": None, "sex": "male",
@@ -144,9 +146,10 @@ def decode(adv):
 
 async def ble_task():
     from bleak import BleakScanner
-    st = {"w": None, "since": 0.0, "armed": False}
+    st = {"w": None, "since": 0.0, "armed": False, "any": time.time()}
 
     def cb(dev, adv):
+        st["any"] = time.time()  # any advertisement at all proves the scanner is alive
         data = decode(adv)
         if not data:
             return
@@ -165,6 +168,11 @@ async def ble_task():
         elif w >= MIN_KG and st["armed"] and now - st["since"] >= STABLE_SECS:
             st["armed"] = False
             live["stable"] = True
+            last = latest_weight()
+            if last and abs(w - last[0]) / last[0] > MAX_JUMP:  # e.g. a bag or a child on the scale
+                print(f"BLE: ignoring implausible reading {w} kg (last {last[0]} kg)", flush=True)
+                publish({"type": "live", **live})
+                return
             rid = add_reading(w, now, imp)
             live["last_saved"] = rid
             publish({"type": "saved", "id": rid, **live})
@@ -172,6 +180,7 @@ async def ble_task():
     while True:
         try:
             live["ble"] = "scanning"
+            st["any"] = time.time()
             publish({"type": "live", **live})
             async with BleakScanner(cb):
                 while True:
@@ -179,6 +188,15 @@ async def ble_task():
                     if live["ts"] and time.time() - live["ts"] > 60 and live["weight"] is not None:
                         live.update(weight=None, stable=False)
                         publish({"type": "live", **live})
+                    # Watchdog: CoreBluetooth can silently stop delivering callbacks on a
+                    # long-running scan. Nearby devices normally advertise constantly, so
+                    # prolonged total silence means the scan is dead: restart it.
+                    if time.time() - st["any"] > SCAN_STALL_SECS:
+                        print(f"BLE: no advertisements for {SCAN_STALL_SECS:.0f}s, restarting scan", flush=True)
+                        live["ble"] = "restarting"
+                        publish({"type": "live", **live})
+                        break
+            await asyncio.sleep(1)
         except Exception as e:  # Bluetooth off, permission, etc.
             live["ble"] = f"error: {e}"
             publish({"type": "live", **live})
@@ -585,12 +603,17 @@ async def test_telegram(request):
 async def food_status(request):
     local_only(request)
     status = (await request.json()).get("status")
+    mid = int(request.match_info["id"])
+    meal = db.execute("SELECT ts FROM meals WHERE id=?", (mid,)).fetchone()
     try:
-        ok = food.set_status(db, int(request.match_info["id"]), status)
+        ok = food.set_status(db, mid, status)
     except ValueError:
         raise web.HTTPBadRequest(text="status must be pending, confirmed or discarded")
     if not ok:
         raise web.HTTPNotFound()
+    if status == "discarded" and meal:
+        advisor.purge_for_meal(db, mid, meal["ts"])  # day advice written before the delete counted this meal
+    publish({"type": "advice"})  # every open dashboard reloads, so daily kcal/macro totals are recomputed
     return web.json_response({"ok": True})
 
 
