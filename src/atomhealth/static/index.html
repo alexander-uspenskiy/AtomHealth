@@ -104,13 +104,13 @@ tbody tr:hover { background:var(--surface2); } tr:last-child td { border-bottom:
 @media (max-width:1000px) { .cols { grid-template-columns:1fr; } }
 
 /* ---------- hero ---------- */
-.hero { display:grid; grid-template-columns:minmax(230px,.9fr) 2.4fr; gap:14px; }
-.live { display:flex; flex-direction:column; justify-content:center; background:linear-gradient(160deg,var(--accent-soft),var(--surface)); }
+.hero { display:grid; grid-template-columns:minmax(140px,.4fr) 3fr; gap:12px; }
+.live { padding:12px 14px; display:flex; flex-direction:column; justify-content:center; background:linear-gradient(160deg,var(--accent-soft),var(--surface)); }
 .live .lbl { font-size:12px; font-weight:650; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:8px; }
-.live .num { font-size:46px; font-weight:750; letter-spacing:-.03em; line-height:1.05; margin:6px 0 2px; }
-.live .num small { font-size:18px; font-weight:600; color:var(--muted); letter-spacing:0; margin-left:4px; }
+.live .num { font-size:32px; font-weight:750; letter-spacing:-.03em; line-height:1.05; margin:6px 0 2px; }
+.live .num small { font-size:14px; font-weight:600; color:var(--muted); letter-spacing:0; margin-left:4px; }
 .live.measuring .num { color:var(--accent); }
-.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:10px; }
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:10px; }
 .kpi { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:9px 12px 7px; box-shadow:var(--shadow); }
 .kpi[data-z] { border-left:3px solid var(--kz); background:color-mix(in srgb,var(--kz) 7%,var(--surface)); }
 .kpi .l { display:flex; justify-content:space-between; align-items:center; gap:6px; }
