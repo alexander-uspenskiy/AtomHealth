@@ -83,7 +83,8 @@ button.btn.ghost { background:var(--surface2); color:var(--text); border:1px sol
 button.link { background:none; border:0; color:var(--muted); cursor:pointer; font:inherit; padding:2px 6px; border-radius:6px; }
 button.link:hover { color:var(--bad); background:color-mix(in srgb,var(--bad) 10%,transparent); }
 label { display:block; font-size:12px; font-weight:600; color:var(--text2); margin:0 0 5px; }
-input,select { width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); color:var(--text); font:inherit; }
+input,select,textarea { width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:10px; background:var(--surface2); color:var(--text); font:inherit; }
+textarea { resize:vertical; }
 input:focus,select:focus { outline:2px solid var(--accent); outline-offset:-1px; background:var(--surface); }
 .form { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px 16px; }
 .hint { font-size:12px; color:var(--muted); margin-top:4px; }
@@ -253,10 +254,11 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
 .nind.idx { margin-top:-2px; } .ni .split { display:flex; height:9px; border-radius:99px; overflow:hidden; margin:7px 0 4px; background:var(--surface); }
 .ni .split i { display:block; height:100%; }
 .ni { position:relative; }
-.ni .info { position:relative; width:15px; height:15px; margin-left:4px; padding:0; border-radius:50%; border:1px solid var(--muted); background:none; color:var(--muted); font:italic 700 10px/13px Georgia,serif; cursor:pointer; vertical-align:1px; }
-.ni .info:hover, .ni .info:focus-visible, .ni .info.open { color:var(--text); border-color:var(--text); }
-.ni .info .tip { display:none; position:absolute; z-index:20; top:20px; left:-8px; width:max-content; max-width:min(260px,70vw); padding:9px 11px; border-radius:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:0 6px 20px rgba(0,0,0,.35); font:400 12px/1.45 inherit; font-style:normal; text-align:left; white-space:normal; }
-.ni .info:hover .tip, .ni .info:focus-visible .tip, .ni .info.open .tip { display:block; }
+.lt { display:inline-flex; align-items:center; gap:5px; }
+.info { position:relative; flex:none; width:15px; height:15px; margin:0; padding:0; border-radius:50%; border:1px solid var(--muted); background:none; color:var(--muted); font:italic 700 10px/13px Georgia,serif; text-transform:none; letter-spacing:normal; cursor:pointer; }
+.info:hover, .info:focus-visible, .info.open { color:var(--text); border-color:var(--text); }
+.info .tip { display:none; position:absolute; z-index:30; top:21px; left:-8px; width:max-content; max-width:min(270px,72vw); padding:9px 11px; border-radius:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:0 6px 20px rgba(0,0,0,.35); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; font-size:12px; font-weight:400; font-style:normal; line-height:1.45; text-align:left; white-space:normal; cursor:default; }
+.info:hover .tip, .info:focus-visible .tip, .info.open .tip { display:block; }
 </style>
 </head>
 <body>
@@ -392,6 +394,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
       <div><label for="p_target_weight">Target weight (kg)</label><input id="p_target_weight" type="number" step="0.1" inputmode="decimal"><div class="hint" id="h_w"></div></div>
       <div><label for="p_target_fat_pct">Target body fat (%)</label><input id="p_target_fat_pct" type="number" step="0.1" inputmode="decimal"><div class="hint" id="h_f"></div></div>
       <div><label for="p_target_date">Target date (optional)</label><input id="p_target_date" type="date"></div>
+      <div style="grid-column:1/-1"><label for="p_special_requirements">Special requirements</label><textarea id="p_special_requirements" rows="3" maxlength="1000" placeholder="e.g. high cholesterol, vegetarian, lactose intolerant, prefer low-sodium"></textarea><div class="hint">Shared with the nutrition adviser so its tips fit you.</div></div>
     </div>
     <div style="margin-top:14px;display:flex;gap:12px;align-items:center"><button class="btn" id="saveProfile">Save changes</button><span id="saved" class="pos"></span></div>
   </div>
@@ -813,11 +816,91 @@ function renderNidx(done) {
   box.innerHTML = tiles.join('');
 }
 // Tap/click toggles the (i) hint (hover and keyboard focus work via CSS); any other click closes it.
+// The hint is nudged sideways when it would run off the screen.
+function placeTip(b) {
+  const t = b.querySelector('.tip'); if (!t) return;
+  t.style.left = '-8px';
+  const r = t.getBoundingClientRect(), W = document.documentElement.clientWidth;
+  if (r.right > W - 8) t.style.left = (-8 - (r.right - W + 8)) + 'px';
+  else if (r.left < 8) t.style.left = (-8 + 8 - r.left) + 'px';
+}
 document.addEventListener('click', e => {
-  const b = e.target.closest && e.target.closest('.ni .info');
-  document.querySelectorAll('.ni .info.open').forEach(x => { if (x !== b) { x.classList.remove('open'); x.setAttribute('aria-expanded', 'false'); } });
-  if (b) { const o = b.classList.toggle('open'); b.setAttribute('aria-expanded', o); }
+  const b = e.target.closest && e.target.closest('.info');
+  document.querySelectorAll('.info.open').forEach(x => { if (x !== b) { x.classList.remove('open'); x.setAttribute('aria-expanded', 'false'); } });
+  if (b) { e.preventDefault(); const o = b.classList.toggle('open'); b.setAttribute('aria-expanded', o); if (o) placeTip(b); }
 });
+document.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('.info'); if (b) placeTip(b); });
+document.addEventListener('focusin', e => { const b = e.target.closest && e.target.closest('.info'); if (b) placeTip(b); });
+
+// (i) hints for every card, chart and indicator: what it shows and how it is calculated.
+// Keys: "h:" card heading, "k:" KPI tile, "n:" nutrition tile, "g:" gauge, "o:" goal row.
+const INFO = {
+  'h:Coach': 'Advice written by the AI model from your saved meals, your targets and your 7- and 30-day weight, BMI and body-composition trends. It is written when you ask (a new one is added at 22:00 if none exists). The "Calculation" box is plain arithmetic on saved meals and is always current.',
+  'h:Today\'s nutrition': 'Totals of the meals you saved today in Telegram (meals still waiting for Save are not counted). Targets come from your plan on the Nutrition tab. Colours show the share of each target eaten; see the legend.',
+  'h:Where you stand': 'Your latest reading against reference ranges. Body fat, water and FFMI are formula estimates from weight, height, age and sex, not measurements.',
+  'h:Goals': 'Targets come from Settings. If you set none, the optimal values are used: weight at BMI 22 and the middle of the healthy body-fat range. Use the (i) on each row for how progress and ETA are worked out.',
+  'h:Weight': 'One dot per reading. The thick line is the average of the last 7 readings (not 7 days), which smooths out daily water swings. Shaded band: healthy weight for your height (BMI 18.5–25). Dashed lines: optimal weight (BMI 22) and your target.',
+  'h:Body fat': 'Estimated body fat % for each reading, from the Deurenberg formula (BMI, age and sex), so it follows BMI closely. Shaded band: healthy range for your age and sex (Gallagher 2000). Dashed: your target.',
+  'h:Body composition': 'Fat mass = weight × body fat %. Lean mass = weight − fat mass. Muscle ≈ 52% of lean mass for men, 47% for women. All three come from the body-fat estimate, so read the trend, not a single point.',
+  'h:BMI': 'Weight ÷ height² (kg/m²). Shaded band = healthy BMI 18.5–25 (WHO). BMI does not tell muscle from fat.',
+  'h:Body water': 'Estimated as 0.73 × lean mass ÷ weight, because lean tissue is about 73% water. Shaded band = typical range for your sex (men 50–65%, women 45–60%).',
+  'h:Statistics': 'Min, max and mean cover all readings. Δ 7d / 30d / 90d = latest minus the last reading taken at least that many days earlier. Δ all = latest minus your first reading.',
+  'h:Recommended weight for your height': 'Each row converts a source\'s BMI range to kg (weight = BMI × height²) or applies a height formula. "You" compares your latest weight with that range.',
+  'h:Composition indices': 'FFMI = lean mass ÷ height². Normalised FFMI adds 6.1 × (1.8 − height in m) (Kouri 1995). FMI = fat mass ÷ height². Body surface area = √(height cm × kg ÷ 3600) (Mosteller). BMR = Mifflin–St Jeor. Total body water = water % × weight.',
+  'h:Ideal body weight': 'Devine, Robinson, Miller and Hamwi formulas: a base weight plus a fixed amount per inch above 5 ft (height ÷ 2.54 − 60), with separate constants for men and women. Optimal = BMI 22. Healthy range = BMI 18.5–25.',
+  'h:Daily energy needs': 'Maintenance = BMR (Mifflin–St Jeor) × activity factor (1.2–1.9). Lose column = maintenance − 550 kcal (≈0.5 kg/week), never below 90% of BMR. Gain column = maintenance + 275 kcal (≈0.25 kg/week). Individual error is about ±10%.',
+  'h:Your nutrition plan': 'Your activity, goal, pace and diet style set the daily calorie target and macros below. The full calculation is in "How the plan is calculated" at the bottom of this tab.',
+  'h:Recommended daily intake': 'Maintenance calories (BMR × activity) plus or minus the goal adjustment: pace in kg/week × 7700 kcal ÷ 7 days. Deficits are capped at 25% of maintenance and never go below 1500 kcal (men), 1200 kcal (women) or 90% of BMR.',
+  'h:Macronutrients': 'Protein = g/kg × the weight you are heading to when losing, otherwise your current weight. Fat = 30% of calories (40% on low-carb). Carbohydrate = the remaining calories. Protein and carbs are 4 kcal/g, fat is 9 kcal/g.',
+  'h:Daily limits and minimums': 'Fibre 14 g per 1000 kcal (IOM). Fluids ≈ 33 ml per kg of body weight. Saturated fat under 10% of calories, free sugars under 10% of calories, sodium under 2000 mg (WHO).',
+  'h:How to split your day': 'Share of the daily calorie target per meal: breakfast 25%, lunch 30%, dinner 30%, snacks 15%. A suggestion only; move calories between meals to suit you.',
+  'k:Weight': 'Latest scale reading. The chip is your BMI class (WHO). "since last" = change from the previous reading; "vs 7-day avg" = change from the average of readings in the 7 days before. 🎯 = distance to your target (or optimal) weight.',
+  'k:BMI': 'Weight ÷ height² (kg/m²). Chip: under 18.5 underweight, 18.5–25 healthy, 25–30 overweight, 30+ obese. Compared with the previous reading and the prior 7-day average.',
+  'k:Body fat': 'Estimate, not a measurement: Deurenberg formula 1.20 × BMI + 0.23 × age − 10.8 (men) − 5.4, limited to 3–60%. The scale\'s impedance is not used. Chip = category for your sex (essential, athletic, fitness, average, high).',
+  'k:Lean mass': 'Weight − fat mass, where fat mass = weight × estimated body fat %. It moves opposite to the body-fat estimate. Chip = fat-free mass index (lean ÷ height²) category for your sex.',
+  'k:Muscle (est.)': 'Lean mass × 0.52 (men) or 0.47 (women): a rough population share of skeletal muscle, not a measurement. Chip = fat-free mass index category.',
+  'k:Body water': '0.73 × lean mass ÷ weight (lean tissue ≈ 73% water). Chip compares with the typical range for your sex (men 50–65%, women 45–60%).',
+  'k:Basal metabolic rate': 'Mifflin–St Jeor: 10 × kg + 6.25 × cm − 5 × age, then + 5 (men) or − 161 (women). Calories your body burns at complete rest.',
+  'k:Maintenance (TDEE)': 'BMR × the activity factor chosen in your plan. Roughly the calories that keep your weight steady.',
+  'k:Deficit': 'Pace (kg/week) × 7700 kcal ÷ 7, taken off maintenance each day. Capped at 25% of maintenance and kept above 1500 kcal (men), 1200 kcal (women) and 90% of BMR.',
+  'k:Surplus': 'Pace (kg/week) × 7700 kcal ÷ 7, added to maintenance each day (default pace 0.25 kg/week).',
+  'k:Maintenance': 'Maintenance goal: no calories added or removed.',
+  'k:Current → target': 'Your latest weight and your target weight. With no target set, the optimal weight (BMI 22 at your height) is used.',
+  'k:Time to target': '|current − target weight| ÷ the effective weekly pace of your calorie deficit or surplus. A rough estimate; real progress varies.',
+  'k:Maintenance at target': 'Maintenance calories recalculated at your target weight: roughly what to eat to hold that weight once you arrive.',
+  'n:Energy': 'Calories from today\'s saved meals vs your daily target. Under 85% = room left, 85–105% on target, 105–115% near limit, over 115% over.',
+  'n:Protein': 'Protein from saved meals vs your target (g/kg × weight, see Nutrition tab). Turns green when met; protein never turns red. Amber from 70%.',
+  'n:Carbs': 'Carbs from saved meals vs your target = calories left after protein and fat, ÷ 4. Colours as for Energy.',
+  'n:Fat': 'Fat from saved meals vs your target = 30% of calories (40% on low-carb) ÷ 9. Colours as for Energy.',
+  'n:Fibre': 'Fibre from saved meals vs 14 g per 1000 kcal of your calorie target (IOM). Turns green when met; never red.',
+  'n:Protein per kg': 'Today\'s protein ÷ your body weight, against your target g/kg (1.2 maintain, 1.6 lose or gain, +0.4 high-protein style, +0.2 low-carb, +0.2 from age 60). Green at 100%, amber from 70%.',
+  'n:Fibre density': 'Fibre grams ÷ calories eaten × 1000, against 14 g per 1000 kcal (IOM). Shows food quality regardless of how much you ate. Green at 14 or more.',
+  'n:7-day average': 'Average calories per logged day over the last 7 days vs your daily target. Days with no saved meals are not counted.',
+  'g:Weight': 'Your latest weight on a scale whose zones are the WHO BMI cut-offs converted to kg for your height (weight = BMI × height²). Marks: your optimal weight (BMI 22) and your target if different.',
+  'g:Body Mass Index': 'Weight ÷ height². WHO zones: under 18.5 underweight, 18.5–25 healthy, 25–30 overweight, 30–35 obese I, 35+ obese II+. Mark at 22 = optimal.',
+  'g:Body fat (estimate)': 'Deurenberg formula from BMI, age and sex: 1.20 × BMI + 0.23 × age − 10.8 (men) − 5.4. Zones are sex-specific categories; the note gives the healthy range for your age and sex (Gallagher 2000).',
+  'g:Body water (estimate)': 'Estimated as 0.73 × lean mass ÷ weight. Typical range depends on sex: men 50–65%, women 45–60%.',
+  'g:Fat-free mass index (FFMI)': 'Lean mass ÷ height². Zones differ for men and women. Normalised FFMI adds 6.1 × (1.8 − height in m); FMI = fat mass ÷ height².',
+  'o:Weight goal': '% done = (first reading − now) ÷ (first reading − target). Pace = trend slope over the last 30 days (90 if too few), needs 3+ readings over 2+ days. ETA = remaining ÷ pace. Reached within 0.2 kg. "Need for date" = remaining ÷ weeks left.',
+  'o:Body fat goal': '% done = (first reading − now) ÷ (first reading − target). Pace = trend slope over the last 30 days (90 if too few). ETA = remaining ÷ pace. Reached within 0.3 points. Body fat is an estimate, so it follows weight and BMI.',
+};
+const INFO_SEL = [['h2', 'h:'], ['.kpi .l', 'k:'], ['.ni .l > span:first-child', 'n:'], ['.g-name', 'g:'], ['.goal-top > b', 'o:'], ['.kcal-big .lbl', 'h:']];
+function decorateInfo() {
+  for (const [sel, pre] of INFO_SEL) document.querySelectorAll(sel).forEach(el => {
+    if (el.querySelector('.info')) return;
+    const tn = [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+    if (!tn) return;
+    const text = INFO[pre + tn.textContent.trim()]; if (!text) return;
+    const wrap = document.createElement('span'); wrap.className = 'lt';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'info'; b.textContent = 'i';
+    b.setAttribute('aria-label', 'About ' + tn.textContent.trim()); b.setAttribute('aria-expanded', 'false');
+    const tip = document.createElement('span'); tip.className = 'tip'; tip.setAttribute('role', 'tooltip'); tip.textContent = text; b.append(tip);
+    tn.replaceWith(wrap); wrap.append(tn, b);
+  });
+}
+let infoQueued = false;
+new MutationObserver(() => { if (infoQueued) return; infoQueued = true; setTimeout(() => { infoQueued = false; decorateInfo(); }, 30); }).observe(document.body, { childList: true, subtree: true });
+decorateInfo();
 function renderToday() {
   const t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const M = (S.meals || []).filter(m => m.ts >= t0 / 1000), done = M.filter(m => m.status === 'confirmed');
@@ -921,7 +1004,7 @@ async function askCoach(kind) {
 $('coachDay').onclick = () => askCoach('day'); $('coachWeek').onclick = () => askCoach('week');
 
 /* ---------------- settings ---------------- */
-const PKEYS = ['height_cm', 'birthdate', 'sex', 'target_weight', 'target_fat_pct', 'target_date'];
+const PKEYS = ['height_cm', 'birthdate', 'sex', 'target_weight', 'target_fat_pct', 'target_date', 'special_requirements'];
 function fillSettings() {
   for (const k of PKEYS) { const el = $('p_' + k); if (document.activeElement !== el) el.value = S.profile[k] ?? ''; }
   const ow = S.optimal.weight, of = S.optimal.fat_pct;
