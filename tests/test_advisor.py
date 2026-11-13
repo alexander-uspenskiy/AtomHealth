@@ -332,6 +332,20 @@ def test_feed_keeps_latest_weekly_review_and_only_todays_messages():
     assert advisor.feed(appmod.db, NOW + 30 * DAY) == {"today": [], "week": None}
 
 
+def test_daily_advice_is_deleted_once_the_days_meals_change():
+    r = {"headline": "H", "text": "T", "used_llm": True}
+    now = int(time.time())
+    appmod.db.execute("INSERT INTO meals(ts, kcal, protein_g, status) VALUES(?, 500, 20, 'confirmed')", (now - 60,))
+    appmod.db.commit()
+    day = advisor.save_advice(appmod.db, "day", r, ts=now)
+    meal = advisor.save_advice(appmod.db, "meal", r, meal_id=1, ts=now)
+    assert {i["id"] for i in advisor.feed(appmod.db, now)["today"]} == {day, meal}
+    appmod.db.execute("UPDATE meals SET status='discarded'")      # a meal was deleted afterwards
+    appmod.db.commit()
+    f = advisor.feed(appmod.db, now)
+    assert [i["id"] for i in f["today"]] == [meal] and f["removed"] == 1 and not appmod.db.execute("SELECT 1 FROM advice WHERE id=?", (day,)).fetchone()
+
+
 def test_bot_coach_saves_advice_and_notifies(fake_report):
     async def go():
         bot, _ = _bot()

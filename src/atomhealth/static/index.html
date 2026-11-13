@@ -839,8 +839,23 @@ function renderCoach() {
   // Advice is written once, when asked for. Say so when meals were logged after the newest daily advice.
   const t0 = new Date(); t0.setHours(0, 0, 0, 0);
   const lastMeal = Math.max(0, ...(S.meals || []).filter(m => m.ts >= t0 / 1000).map(m => m.ts));
+  // Direct calculation from the saved meals: always current, never from the model.
+  const done = (S.meals || []).filter(m => m.ts >= t0 / 1000 && m.status === 'confirmed');
+  const tot = k => done.reduce((a, m) => a + (m[k] || 0), 0), n = S.nutrition || {}, tgt = n.kcal;
+  const pT = ((n.macros || []).find(x => x.key === 'protein') || {}).g;
+  const left = tgt ? Math.round(tgt - tot('kcal')) : null;
+  const calc = document.createElement('div'); calc.className = 'advice';
+  calc.innerHTML = `<div class="head"><span class="chip">Calculation</span><span>live, from ${done.length} saved meal${done.length === 1 ? '' : 's'}</span></div>` +
+    `<div class="hl">Today: ${Math.round(tot('kcal')).toLocaleString()}${tgt ? ' / ' + tgt.toLocaleString() : ''} kcal${left === null ? '' : left >= 0 ? ` · ${left.toLocaleString()} left` : ` · ${(-left).toLocaleString()} over`}</div>` +
+    `<div class="tx">Protein ${Math.round(tot('protein_g'))}${pT ? ' / ' + pT : ''} g · Carbs ${Math.round(tot('carbs_g'))} g · Fat ${Math.round(tot('fat_g'))} g · Fibre ${Math.round(tot('fiber_g'))}${(n.limits || {}).fiber_g ? ' / ' + n.limits.fiber_g : ''} g</div>`;
+  box.append(calc);
+  if (A.removed) {
+    const w = document.createElement('div'); w.className = 'stale';
+    w.textContent = 'The daily advice was removed because your meals changed after it was written. Tap "Today\'s advice" for a new one (at 22:00 one is added if none exists).';
+    box.append(w);
+  }
   const lastDay = Math.max(0, ...A.today.filter(i => i.kind === 'day').map(i => i.ts));
-  if (lastMeal && lastMeal > lastDay) {
+  if (!A.removed && lastMeal && lastMeal > lastDay) {
     const w = document.createElement('div'); w.className = 'stale';
     w.textContent = lastDay ? 'You logged meals after the latest daily advice below. Tap "Today\'s advice" to refresh it.' : 'Meals are logged today but there is no daily advice yet. Tap "Today\'s advice" to get it.';
     box.append(w);

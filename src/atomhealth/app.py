@@ -60,9 +60,11 @@ CREATE TABLE IF NOT EXISTS meal_items(
 CREATE INDEX IF NOT EXISTS meals_ts ON meals(ts);
 CREATE TABLE IF NOT EXISTS advice(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, day TEXT NOT NULL, kind TEXT NOT NULL,
-  question TEXT, headline TEXT, text TEXT, used_llm INTEGER DEFAULT 1, meal_id INTEGER, source TEXT);
+  question TEXT, headline TEXT, text TEXT, used_llm INTEGER DEFAULT 1, meal_id INTEGER, source TEXT, basis TEXT);
 CREATE INDEX IF NOT EXISTS advice_day ON advice(day);
 """)
+if "basis" not in {r["name"] for r in db.execute("PRAGMA table_info(advice)")}:
+    db.execute("ALTER TABLE advice ADD COLUMN basis TEXT")  # what the day's meals looked like when it was written
 # meal photos live in the DB as reduced JPEG blobs (one file to back up). Drop an empty pre-release layout.
 if (cols := {r["name"] for r in db.execute("PRAGMA table_info(meal_photos)")}) and "data" not in cols:
     if db.execute("SELECT COUNT(*) FROM meal_photos").fetchone()[0] == 0:
@@ -617,8 +619,50 @@ async def food_status(request):
     return web.json_response({"ok": True})
 
 
+DAILY_REVALIDATE_AT = "22:00"
+
+
+async def daily_revalidate_task():
+    """Every day at 22:00: validate today's daily advice against the current meals. Advice whose totals no
+    longer match is deleted; if none is left a new one is written, otherwise it is kept as is. Retries a
+    failed model call every 10 minutes until midnight."""
+    last_try = 0.0
+    while True:
+        try:
+            await asyncio.sleep(60)
+            now = datetime.now()
+            key = now.strftime("%Y-%m-%d")
+            if now.strftime("%H:%M") < DAILY_REVALIDATE_AT or kv_get("advice_revalidated") == key:
+                continue
+            if time.time() - last_try < 600:
+                continue
+            last_try = time.time()
+            start = food.day_start(now.timestamp())
+            if not food.meals_between(db, start, start + 86400):
+                kv_set("advice_revalidated", key)       # nothing logged: nothing to advise on
+                continue
+            advisor.feed(db)                            # deletes daily advice that no longer matches
+            if db.execute("SELECT 1 FROM advice WHERE kind='day' AND day=?", (key,)).fetchone():
+                kv_set("advice_revalidated", key)       # calculation matches: leave it as is
+                continue
+            snap = advice_snapshot()
+            if snap is None:
+                continue
+            r = await advisor.report("day", snap, None)
+            advisor.save_advice(db, "day", r, source="scheduled")
+            kv_set("advice_revalidated", key)
+            publish({"type": "advice"})
+        except asyncio.CancelledError:
+            raise
+        except LLMError as e:
+            print(f"daily advice revalidation failed, will retry: {e}", flush=True)
+        except Exception as e:
+            print(f"daily advice revalidation error: {e}", flush=True)
+
+
 async def on_start(app):
     await app["bot"].apply()
+    app["revalidate"] = asyncio.create_task(daily_revalidate_task())
     if not app["no_ble"]:
         app["ble"] = asyncio.create_task(ble_task())
     else:
@@ -626,6 +670,7 @@ async def on_start(app):
 
 
 async def on_stop(app):
+    app["revalidate"].cancel()
     await app["bot"].stop()
 
 

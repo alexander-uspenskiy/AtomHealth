@@ -272,12 +272,20 @@ async def report(kind, s, question=None, llm=None):
 
 
 # ---------- persistence: every message is kept so the dashboard can show "today's advice" ----------
+def day_basis(db, ts) -> str:
+    """Fingerprint of the saved meals of the day containing ts: count, kcal and protein."""
+    start = food.day_start(ts)
+    rows = food.meals_between(db, start, start + 86400)
+    t = food.sum_meals(rows)
+    return f"{len(rows)}:{round(t['kcal'])}:{round(t['protein_g'])}"
+
+
 def save_advice(db, kind, r, *, question=None, meal_id=None, source="api", ts=None):
     ts = int(ts or time.time())
-    cur = db.execute("INSERT INTO advice(ts, day, kind, question, headline, text, used_llm, meal_id, source) "
-                     "VALUES(?,?,?,?,?,?,?,?,?)",
+    cur = db.execute("INSERT INTO advice(ts, day, kind, question, headline, text, used_llm, meal_id, source, basis) "
+                     "VALUES(?,?,?,?,?,?,?,?,?,?)",
                      (ts, datetime.fromtimestamp(ts).strftime("%Y-%m-%d"), kind, question, r["headline"], r["text"],
-                      1 if r.get("used_llm") else 0, meal_id, source))
+                      1 if r.get("used_llm") else 0, meal_id, source, day_basis(db, ts)))
     db.commit()
     return cur.lastrowid
 
@@ -302,7 +310,18 @@ def feed(db, now=None, limit=20):
     """Today's advice messages (newest first) and the most recent weekly review of the last 8 days."""
     now = now or time.time()
     day = datetime.fromtimestamp(now).strftime("%Y-%m-%d")
-    today = [_row(r) for r in db.execute("SELECT * FROM advice WHERE day=? ORDER BY ts DESC, id DESC LIMIT ?", (day, limit))]
+    rows = db.execute("SELECT * FROM advice WHERE day=? ORDER BY ts DESC, id DESC LIMIT ?", (day, limit)).fetchall()
+    basis = day_basis(db, now)
+    # a daily summary written for different meals than today's current ones is out of date: delete it
+    stale = [r["id"] for r in rows if r["kind"] == "day" and r["basis"] and r["basis"] != basis]
+    if stale:
+        db.execute(f"DELETE FROM advice WHERE id IN ({','.join('?' * len(stale))})", stale)
+        db.commit()
+    keep = [r for r in rows if r["id"] not in stale]
+    today = [_row(r) for r in keep]
     wk = db.execute("SELECT * FROM advice WHERE kind='week' AND ts>=? ORDER BY ts DESC, id DESC LIMIT 1",
                     (now - 8 * 86400,)).fetchone()
-    return {"today": today, "week": _row(wk) if wk else None}
+    out = {"today": today, "week": _row(wk) if wk else None}
+    if len(keep) != len(rows):
+        out["removed"] = len(rows) - len(keep)
+    return out
