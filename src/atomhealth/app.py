@@ -39,6 +39,7 @@ DEFAULT_PROFILE = {
     "height_cm": 174, "age": 30, "birthdate": None, "sex": "male",
     "target_weight": None, "target_fat_pct": None, "target_date": None,
     "activity": 1.375, "diet_goal": "auto", "diet_pace": None, "diet_style": "balanced",
+    "special_requirements": "",
 }
 
 # ---------- storage ----------
@@ -256,6 +257,8 @@ async def set_profile(request):
             v = body[k]
             if k in ("height_cm", "age", "target_weight", "target_fat_pct", "activity", "diet_pace"):
                 v = float(v) if v not in (None, "") else None
+            if k == "special_requirements":
+                v = str(v or "").strip()[:1000]
             p[k] = (v or None) if k in ("target_date", "birthdate") else v
     kv_set("profile", p)
     return web.json_response(p)

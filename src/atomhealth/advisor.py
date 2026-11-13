@@ -36,6 +36,9 @@ water %) over 7 and 30 days: 'now', 'change' (negative = down) and 'direction'. 
 briefly for the day/week review (e.g. weight and fat down, lean mass stable) and tie them to the advice. \
 Fat %, lean and muscle are formula ESTIMATES from weight, height, age and sex, so treat them as direction \
 only. A null window means too little data: do not guess it.
+- special_requirements (if present) is the user's own note about health conditions, diet or preferences \
+(e.g. high cholesterol, vegetarian, allergies). Respect it in every suggestion: never recommend foods that \
+conflict with it, and tailor tips to it. Do not diagnose or give medical claims.
 - If few days are logged (days_logged), say the advice will sharpen with more logging.
 - Plain text only: no markdown, no headings, no bullet symbols other than '-'. At most one emoji.
 - Reply in the language of the user's question if there is one, otherwise English.
@@ -194,6 +197,7 @@ def snapshot(db, profile, plan, weight, now=None, meal=None):
         "macro_targets_g": macro_t or None, "fibre_target_g": (plan.get("limits") or {}).get("fiber_g"),
         "weight_kg": weight, "target_weight_kg": plan.get("target_weight"),
         "sex": profile.get("sex"), "age": profile.get("age"),
+        "special_requirements": (profile.get("special_requirements") or "").strip() or None,
         "today": {k: series[-1][k] for k in ("kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "meals")},
         "last_7_days": [{"date": d["date"], "kcal": round(d["kcal"]), "protein_g": round(d["protein_g"])}
                         for d in week],
