@@ -39,11 +39,16 @@ Related: [PLAN-apple-health-app.md](PLAN-apple-health-app.md) (product plan), [A
 ## Effort and status
 | Step | Effort | Status |
 |---|---|---|
-| A1 Xcode download | 15 GB | in progress (2026-11-14) |
+| A1 Xcode download | 15 GB | done: Xcode 27.2, license accepted (2026-11-14) |
 | A2, A3 | 10 min, user | pending |
-| B1 to B4 | about 1 day | pending |
+| B3 crypto layer | 1 hour | **done**: `ios/AtomHealthCore` Swift package, 5 tests pass (`swift test`), byte-identical to Python via `tools/gen_crypto_vectors.py` |
+| B1, B2, B4 | about 1 day | pending (B1/B2 need the Apple ID in Xcode) |
 | B5 to B8 | 2 to 3 days | pending |
 | C | 10 min | pending |
+
+## Notes
+- No iOS simulator runtime is installed yet; the core package is tested on macOS (`cd ios/AtomHealthCore && swift test`). Download an iOS runtime in Xcode > Settings > Components to run the app in a simulator.
+- Regenerate vectors after any crypto change: `PYTHONPATH=src python tools/gen_crypto_vectors.py ios/AtomHealthCore/Tests/AtomHealthCoreTests/Resources/crypto_vectors.json`.
 
 ## Open questions
 - Does HealthKit background delivery work on a free team? (test in step C)

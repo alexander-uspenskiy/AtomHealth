@@ -1,0 +1,20 @@
+{
+  "key_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "aad_prefix": "atomhealth-v1|",
+  "cases": [
+    {
+      "device_id": "dev-mac-1",
+      "record_id": "rec-AAAAAAAA",
+      "nonce": "AAECAwQFBgcICQoL",
+      "ciphertext": "8tl+IhMmiWLD+k+WuicsFKwZ1Y8lVoGbiecN/1e11k+J8ljRyjzY/BUIVK9UtqMBCOHbB5RH1rkoi/Ul5T/6tw0d2JKEYA7T9SF9jChM7MHq7msQCwuEXyxtiyysDiCFfOlcw8fpF8SBa9+V1fTe54EbCVPuf3rPd0MA81tZ3jL+FqDJiwntXWcjAgf4G31ERE2+XOfKtClcE0ef",
+      "plaintext": "{\"v\":1,\"type\":\"weight\",\"op\":\"upsert\",\"id\":\"w1\",\"version\":3,\"updated_at\":1700000000,\"data\":{\"ts\":1700000000,\"weight_kg\":78.4,\"fat_pct\":21.0}}"
+    },
+    {
+      "device_id": "phone-1",
+      "record_id": "rec_BBBB-0001",
+      "nonce": "ZGVmZ2hpamtsbW5v",
+      "ciphertext": "TzPN6KKUWnCPp2Ua0LP6/hWn/hazcoTd5AXU1p9eqYevm57Cxl5oSb2C88/EgZ6ttqjmcnFJDN5ynZ7mYNcllHYTVBC9j1Ff23Zci+TuI/9NMPx00xwXFtqpE4UZnC0tmit/yaQEVCxavAc17rOpHhQo/0wr2SV4rTVOxOza5FlhRa4g2bcMJR9UmPATag==",
+      "plaintext": "{\"v\":1,\"type\":\"meal\",\"op\":\"delete\",\"id\":\"m9\",\"version\":7,\"updated_at\":1700000100,\"data\":{\"note\":\"caf\\u00e9 \\u2615 \\u00fcber\"}}"
+    }
+  ]
+}
