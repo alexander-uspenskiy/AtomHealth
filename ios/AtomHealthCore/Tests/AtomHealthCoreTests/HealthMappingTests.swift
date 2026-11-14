@@ -85,3 +85,16 @@ private let pythonPairingCode = "ahpair1:eyJkIjoiZGV2LXBob25lIiwiayI6IkFBRUNBd1F
     #expect(throws: PairingPayload.Invalid.token) { try PairingPayload.decode(wire(#"{"v":1,"u":"https://r.example","d":"a","t":"b.longsecret","k":"\#(k)"}"#)) }
     #expect(throws: PairingPayload.Invalid.key) { try PairingPayload.decode(wire(#"{"v":1,"u":"https://r.example","d":"a","t":"a.longsecret","k":"AAAA"}"#)) }
 }
+
+
+@Test func outboxKeepsOnlyTheLatestChangePerEntity() async throws {
+    let store = InMemoryStateStore()
+    for kg in [70.0, 70.5, 71.0] {
+        await store.enqueue(LocalChange(type: .weight, id: "hk:A", op: .upsert, data: .object(["weight_kg": .number(kg)])))
+    }
+    await store.enqueue(HealthMapping.deletion(type: .weight, id: "hk:B"))
+    await store.enqueue(HealthMapping.weightChange(uuid: "B", date: Date(timeIntervalSince1970: 1_700_000_000), kg: 80))   // same id as the delete above
+    let q = await store.pending()
+    #expect(q.count == 2)
+    #expect(q[0].data?["weight_kg"]?.doubleValue == 71.0 && q[1].op == .upsert)
+}

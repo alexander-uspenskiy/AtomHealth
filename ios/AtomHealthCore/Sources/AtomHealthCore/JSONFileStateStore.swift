@@ -35,7 +35,11 @@ public actor JSONFileStateStore: SyncStateStore, BlobStore {
     public func setVersion(_ v: Int, of type: EnvelopeType, id: String) { state.versions[Self.key(type, id)] = v; save() }
     public func pending() -> [LocalChange] { state.queue }
     public func removePending(count: Int) { state.queue.removeFirst(min(count, state.queue.count)); save() }
-    public func enqueue(_ c: LocalChange) { state.queue.append(c); save() }
+    /// Only the latest change per entity matters; an older queued change for the same entity is replaced.
+    public func enqueue(_ c: LocalChange) {
+        state.queue.removeAll { $0.type == c.type && $0.id == c.id }
+        state.queue.append(c); save()
+    }
     public func blob(_ key: String) -> Data? { state.blobs[key] }
     public func setBlob(_ data: Data?, for key: String) { state.blobs[key] = data; save() }
 }

@@ -136,5 +136,5 @@ public actor InMemoryStateStore: SyncStateStore {
     public func setVersion(_ v: Int, of type: EnvelopeType, id: String) { versions["\(type.rawValue)|\(id)"] = v }
     public func pending() -> [LocalChange] { queue }
     public func removePending(count: Int) { queue.removeFirst(min(count, queue.count)) }
-    public func enqueue(_ c: LocalChange) { queue.append(c) }
+    public func enqueue(_ c: LocalChange) { queue.removeAll { $0.type == c.type && $0.id == c.id }; queue.append(c) }
 }

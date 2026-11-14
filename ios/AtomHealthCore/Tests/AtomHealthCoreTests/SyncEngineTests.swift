@@ -124,16 +124,16 @@ func weight(_ id: String, _ version: Int, _ kg: Double, op: Envelope.Op = .upser
     #expect(try await engine.cycle().pulled == 1)
 }
 
-@Test func versionsIncreasePerEntityAndExceedSeen() async throws {
+@Test func versionExceedsAnyAlreadySeenAndOnlyTheLatestChangeIsSent() async throws {
     let relay = FakeRelay(device: "phone"), store = InMemoryStateStore(), sink = RecordingSink()
     let future = Int(Date().timeIntervalSince1970 * 1000) + 10_000_000
     await store.setVersion(future, of: .weight, id: "hk-1")
     await store.enqueue(LocalChange(type: .weight, id: "hk-1", op: .upsert, data: .object(["weight_kg": .number(1)])))
-    await store.enqueue(LocalChange(type: .weight, id: "hk-1", op: .delete))
+    await store.enqueue(LocalChange(type: .weight, id: "hk-1", op: .delete))   // replaces the upsert: only the delete goes out
     _ = try await SyncEngine(deviceID: "phone", key: K, relay: relay, store: store, sink: sink).cycle()
-    let vs = try await relay.rows.map { r in
-        try Envelope.decode(RecordCrypto.open(nonce: r.rec.nonce, ciphertext: r.rec.ciphertext, key: K, deviceID: "phone", recordID: r.rec.recordID)).version }
-    #expect(vs == [future + 1, future + 2])
+    let envs = try await relay.rows.map { r in
+        try Envelope.decode(RecordCrypto.open(nonce: r.rec.nonce, ciphertext: r.rec.ciphertext, key: K, deviceID: "phone", recordID: r.rec.recordID)) }
+    #expect(envs.count == 1 && envs[0].op == .delete && envs[0].version == future + 1)
 }
 
 @Test func twoEnginesExchangeThroughSharedRelay() async throws {

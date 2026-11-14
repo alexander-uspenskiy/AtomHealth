@@ -97,6 +97,16 @@ public final class HealthKitSink: InboundSink, @unchecked Sendable {
 
 /// Watches Health for changes made by other apps and devices and queues them for the relay.
 /// Samples this app wrote itself are excluded by source, so Mac data never echoes back.
+actor RefreshGate {
+    private var running = false, again = false
+    func run(_ work: @Sendable () async -> Void) async {
+        if running { again = true; return }
+        running = true
+        repeat { again = false; await work() } while again
+        running = false
+    }
+}
+
 public final class HealthKitReader: @unchecked Sendable {
     let store: HKHealthStore
     let state: JSONFileStateStore
@@ -130,10 +140,15 @@ public final class HealthKitReader: @unchecked Sendable {
         await refresh()
     }
 
+    /// Many observers fire at once at startup; concurrent runs would read the same anchor and queue duplicates.
+    /// Callers that arrive while a refresh is running just ask for one more pass.
+    let gate = RefreshGate()
     public func refresh() async {
-        await readBodyMass()
-        await readWorkouts()
-        await dayTotals(days: 14)
+        await gate.run { [self] in
+            await readBodyMass()
+            await readWorkouts()
+            await dayTotals(days: 14)
+        }
     }
 
     // MARK: anchored, incremental reads (weight, workouts)
