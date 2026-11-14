@@ -44,7 +44,8 @@ Related: [PLAN-apple-health-app.md](PLAN-apple-health-app.md) (product plan), [A
 | B3 crypto layer | 1 hour | **done**: `ios/AtomHealthCore` Swift package, 5 tests pass (`swift test`), byte-identical to Python via `tools/gen_crypto_vectors.py` |
 | B4 envelope + relay client | 2 hours | **done**: `Envelope.swift`, `RelayClient.swift` (https-only, 50-record batches, token never in errors), 10 Swift tests pass |
 | B1, B2 | 1 hour | pending (need the Apple ID in Xcode) |
-| B5 to B8 | 2 to 3 days | pending |
+| B6 sync engine core | 3 hours | **done**: `SyncEngine.swift` (pull then push, versions, tombstones, cursor/outbox safety, forged records skipped), 18 Swift tests pass in total |
+| B5 HealthKit layer, B7 UI, B8 Mac pairing screen | 2 days | pending |
 | C | 10 min | pending |
 
 ## Notes
