@@ -1,0 +1,16 @@
+name = "atomhealth-relay"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+# Replace database_id after `npx wrangler d1 create atomhealth-relay`.
+[[d1_databases]]
+binding = "DB"
+database_name = "atomhealth-relay"
+database_id = "9729bb26-aaa1-4ca0-a609-d58d86891fda"
+migrations_dir = "migrations"
+
+# Daily cleanup of already-acknowledged / expired changes (03:17 UTC).
+[triggers]
+crons = ["17 3 * * *"]
+
+# Secret (never commit):  npx wrangler secret put ADMIN_CODE

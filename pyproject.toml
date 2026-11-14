@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-dependencies = ["aiohttp", "bleak", "pillow"]
+dependencies = ["aiohttp", "bleak", "pillow", "cryptography", "keyring"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
