@@ -1,0 +1,356 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6A33938A457E9A1773CFEEF2 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B407DFDDD6FD2B78EA23AE92 /* Keychain.swift */; };
+		7F3493489255404B4E2D6F1C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D003CD3E0A30B0700FBC59 /* ContentView.swift */; };
+		82B50583CF172D26EFEDF8C8 /* AtomHealthKit in Frameworks */ = {isa = PBXBuildFile; productRef = E3FD61B1D50E0930CD4D215E /* AtomHealthKit */; };
+		993EBB7D8A8DB674DF6C2379 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 347F94AF597DA7E898EF8BC8 /* AppModel.swift */; };
+		9B73FF024D9F67E4EED706B2 /* AtomHealthCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0F83E9333CC5C828F63B3234 /* AtomHealthCore */; };
+		CC29A660E93F158ED002DA1F /* AtomHealthSyncApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC33DDAB9F95B464DF4F0660 /* AtomHealthSyncApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		347F94AF597DA7E898EF8BC8 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		5ED83600CB3EE9ED2A810F2A /* AtomHealthCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AtomHealthCore; path = ../AtomHealthCore; sourceTree = SOURCE_ROOT; };
+		77D003CD3E0A30B0700FBC59 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		928A4FC8AB4F2FDC504263F5 /* AtomHealthSync.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AtomHealthSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B407DFDDD6FD2B78EA23AE92 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		B57C1EE1756EB0419B2C989D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C9BE69E778A2889022AB7445 /* AtomHealthSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AtomHealthSync.entitlements; sourceTree = "<group>"; };
+		DC33DDAB9F95B464DF4F0660 /* AtomHealthSyncApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtomHealthSyncApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B4377ED8573A00ABD11CE760 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B73FF024D9F67E4EED706B2 /* AtomHealthCore in Frameworks */,
+				82B50583CF172D26EFEDF8C8 /* AtomHealthKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		93441B8BF9766E59CC3F8B74 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				928A4FC8AB4F2FDC504263F5 /* AtomHealthSync.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		98298C6FD928D441CF289B74 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				347F94AF597DA7E898EF8BC8 /* AppModel.swift */,
+				C9BE69E778A2889022AB7445 /* AtomHealthSync.entitlements */,
+				DC33DDAB9F95B464DF4F0660 /* AtomHealthSyncApp.swift */,
+				77D003CD3E0A30B0700FBC59 /* ContentView.swift */,
+				B57C1EE1756EB0419B2C989D /* Info.plist */,
+				B407DFDDD6FD2B78EA23AE92 /* Keychain.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		EA132FFEE40979276A76249B = {
+			isa = PBXGroup;
+			children = (
+				EC6403D0CA104D4BAE576998 /* Packages */,
+				98298C6FD928D441CF289B74 /* Sources */,
+				93441B8BF9766E59CC3F8B74 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EC6403D0CA104D4BAE576998 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				5ED83600CB3EE9ED2A810F2A /* AtomHealthCore */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B0AA6414D96AE9097F1DD1B6 /* AtomHealthSync */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 73828F5644559B62D60D8FD1 /* Build configuration list for PBXNativeTarget "AtomHealthSync" */;
+			buildPhases = (
+				D9FBC0D74A7F1BCA15E1B89F /* Sources */,
+				B4377ED8573A00ABD11CE760 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AtomHealthSync;
+			packageProductDependencies = (
+				0F83E9333CC5C828F63B3234 /* AtomHealthCore */,
+				E3FD61B1D50E0930CD4D215E /* AtomHealthKit */,
+			);
+			productName = AtomHealthSync;
+			productReference = 928A4FC8AB4F2FDC504263F5 /* AtomHealthSync.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1C4D5B94903EAEC8CE6D7586 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					B0AA6414D96AE9097F1DD1B6 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 38765C932F5752C962643748 /* Build configuration list for PBXProject "AtomHealthSync" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = EA132FFEE40979276A76249B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				67498A451C026C7307B3B311 /* XCLocalSwiftPackageReference "../AtomHealthCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 93441B8BF9766E59CC3F8B74 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B0AA6414D96AE9097F1DD1B6 /* AtomHealthSync */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D9FBC0D74A7F1BCA15E1B89F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				993EBB7D8A8DB674DF6C2379 /* AppModel.swift in Sources */,
+				CC29A660E93F158ED002DA1F /* AtomHealthSyncApp.swift in Sources */,
+				7F3493489255404B4E2D6F1C /* ContentView.swift in Sources */,
+				6A33938A457E9A1773CFEEF2 /* Keychain.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3F38EB16A1AAE21E220563C6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/AtomHealthSync.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alex.atomhealthsync;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4765C5A05026BD5158F2D5A0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		4E0A2E90A7747213518BFCF4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/AtomHealthSync.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alex.atomhealthsync;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		DD5DE547CD3ED3B4F3D04BE2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		38765C932F5752C962643748 /* Build configuration list for PBXProject "AtomHealthSync" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD5DE547CD3ED3B4F3D04BE2 /* Debug */,
+				4765C5A05026BD5158F2D5A0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		73828F5644559B62D60D8FD1 /* Build configuration list for PBXNativeTarget "AtomHealthSync" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F38EB16A1AAE21E220563C6 /* Debug */,
+				4E0A2E90A7747213518BFCF4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		67498A451C026C7307B3B311 /* XCLocalSwiftPackageReference "../AtomHealthCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../AtomHealthCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0F83E9333CC5C828F63B3234 /* AtomHealthCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AtomHealthCore;
+		};
+		E3FD61B1D50E0930CD4D215E /* AtomHealthKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AtomHealthKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1C4D5B94903EAEC8CE6D7586 /* Project object */;
+}

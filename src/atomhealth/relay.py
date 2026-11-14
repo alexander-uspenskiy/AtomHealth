@@ -79,6 +79,15 @@ def new_record_id() -> str:
     return secrets.token_urlsafe(16)
 
 
+PAIR_PREFIX = "ahpair1:"
+
+
+def pairing_code(url, device_id, token, key_b64):
+    """One-time text a phone pastes (or scans) to join: relay url, its own device id and token, and the data key."""
+    body = json.dumps({"v": 1, "u": url, "d": device_id, "t": token, "k": key_b64}, separators=(",", ":"), sort_keys=True)
+    return PAIR_PREFIX + base64.urlsafe_b64encode(body.encode()).decode().rstrip("=")
+
+
 def _aad(device_id, record_id):
     return AAD_PREFIX + device_id.encode() + b"|" + record_id.encode()
 
@@ -296,6 +305,31 @@ def _cmd_pair(a):
         print("No data key yet: run `keygen` here, or `import-key` with the key created on the phone.")
 
 
+def _cmd_pair_phone(a):
+    """Register a second device (the phone) with the relay and print its one-time pairing code."""
+    app, store = _app(), SecretStore()
+    cfg, key = app.kv_get("relay"), store.get("key")
+    if not cfg or not key:
+        sys.exit("Pair this Mac first (`pair`, then `keygen`).")
+    code = os.environ.get("RELAY_ADMIN_CODE")
+    if a.admin_code_file:
+        code = open(a.admin_code_file).read().strip()
+    if not code:
+        code = getpass.getpass("Relay admin code: ")
+
+    async def go():
+        c = RelayClient(cfg["url"])
+        try:
+            return await c.pair(code, a.name)
+        finally:
+            await c.close()
+    res = asyncio.run(go())
+    print(f"Registered {a.name} as device {res['device_id']}.", file=sys.stderr)
+    print("The code below contains the phone's token AND the data key. Paste it into the app, then clear your clipboard"
+          " and terminal scrollback. It is shown once.", file=sys.stderr)
+    print(pairing_code(cfg["url"], res["device_id"], res["token"], key))
+
+
 def _cmd_keygen(a):
     store = SecretStore()
     if store.get("key") and not a.force:
@@ -341,6 +375,10 @@ def main(argv=None):
     pp.add_argument("--name", default="mac")
     pp.add_argument("--admin-code-file")
     pp.set_defaults(fn=_cmd_pair)
+    ph = sub.add_parser("pair-phone", help="register the phone and print its one-time pairing code")
+    ph.add_argument("--name", default="iphone")
+    ph.add_argument("--admin-code-file")
+    ph.set_defaults(fn=_cmd_pair_phone)
     kp = sub.add_parser("keygen", help="create the 256-bit data key (stored in the keychain)")
     kp.add_argument("--force", action="store_true")
     kp.set_defaults(fn=_cmd_keygen)

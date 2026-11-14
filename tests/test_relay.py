@@ -222,3 +222,10 @@ def test_unauthorized_relay_reports_error_without_leaking_token():
             return str(ei.value)
     msg = asyncio.run(go())
     assert "401" in msg and "TOPSECRET" not in msg
+
+
+def test_pairing_code_roundtrips_and_is_url_safe():
+    code = relay.pairing_code("https://r.example", "dev-phone", "dev-phone.SECRET", relay.b64e(KEY))
+    assert code.startswith("ahpair1:") and "=" not in code and "+" not in code and "/" not in code
+    body = json.loads(relay.b64d(code[len("ahpair1:"):] + "=" * (-len(code[len("ahpair1:"):]) % 4)))
+    assert body == {"v": 1, "u": "https://r.example", "d": "dev-phone", "t": "dev-phone.SECRET", "k": relay.b64e(KEY)}

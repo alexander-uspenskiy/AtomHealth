@@ -46,7 +46,8 @@ Related: [PLAN-apple-health-app.md](PLAN-apple-health-app.md) (product plan), [A
 | B1, B2 | 1 hour | pending (need the Apple ID in Xcode) |
 | B6 sync engine core | 3 hours | **done**: `SyncEngine.swift` (pull then push, versions, tombstones, cursor/outbox safety, forged records skipped), 18 Swift tests pass in total |
 | B5 HealthKit layer | 3 hours | **built and compiles for iOS Simulator; not yet run against HealthKit.** Pure mapping and validation (`HealthMapping.swift`) and a durable `JSONFileStateStore` are unit-tested (23 Swift tests pass on macOS). The HealthKit adapter (`AtomHealthKit/HealthKitAdapter.swift`: sink, reader, observers, anchors, background delivery) needs the app host to run. |
-| B7 app UI + signing, B8 Mac pairing screen | 1 day | pending |
+| B7 app UI | 2 hours | **built**: `ios/AtomHealthSync` (XcodeGen `project.yml`, SwiftUI pair/status screens, Keychain, HealthKit entitlements incl. background delivery). Builds for the simulator and launches to the pairing screen. **Pairing, Keychain and Health permission flow not yet verified end to end** (an unsigned simulator build showed a pairing error that is probably a Keychain entitlement problem; ad-hoc signed rebuild not confirmed). Not yet signed with your Personal Team or run on the iPhone. |
+| B8 Mac pairing | 1 hour | CLI done: `python -m atomhealth.relay pair-phone` prints a one-time `ahpair1:` code (tested). Settings-tab UI/QR still pending. |
 | C | 10 min | pending |
 
 ## Notes

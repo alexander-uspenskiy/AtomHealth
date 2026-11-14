@@ -1,0 +1,43 @@
+name: AtomHealthSync
+options:
+  bundleIdPrefix: com.alex
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  AtomHealthCore:
+    path: ../AtomHealthCore
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_STYLE: Automatic
+    # Pick your Personal Team in Xcode (Signing & Capabilities); leave empty here so no ID is committed.
+    DEVELOPMENT_TEAM: ""
+targets:
+  AtomHealthSync:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    dependencies:
+      - package: AtomHealthCore
+        product: AtomHealthCore
+      - package: AtomHealthCore
+        product: AtomHealthKit
+    entitlements:
+      path: Sources/AtomHealthSync.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        com.apple.developer.healthkit.background-delivery: true
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: AtomHealth Sync
+        UILaunchScreen: {}
+        NSHealthShareUsageDescription: AtomHealth Sync reads your weight, workouts, activity and nutrition from Apple Health so your AtomHealth Mac app can use them.
+        NSHealthUpdateUsageDescription: AtomHealth Sync writes weights and meals logged in AtomHealth into Apple Health.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.alex.atomhealthsync
+        GENERATE_INFOPLIST_FILE: NO

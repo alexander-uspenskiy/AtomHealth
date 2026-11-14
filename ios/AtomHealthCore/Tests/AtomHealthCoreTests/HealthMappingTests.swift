@@ -67,3 +67,21 @@ private let now = Date(timeIntervalSince1970: 1_800_000_000)
     let fresh = await JSONFileStateStore(url: url.appendingPathExtension("missing")).cursor()
     #expect(fresh == 0)
 }
+
+// Produced by relay.pairing_code("https://r.example", "dev-phone", "dev-phone.SECRET", b64(bytes(range(32)))).
+private let pythonPairingCode = "ahpair1:eyJkIjoiZGV2LXBob25lIiwiayI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHhBUkVoTVVGUllYR0JrYUd4d2RIaDg9IiwidCI6ImRldi1waG9uZS5TRUNSRVQiLCJ1IjoiaHR0cHM6Ly9yLmV4YW1wbGUiLCJ2IjoxfQ"
+
+@Test func parsesPairingCodeFromPython() throws {
+    let p = try PairingPayload.decode("  \(pythonPairingCode)\n")
+    #expect(p.url == "https://r.example" && p.deviceID == "dev-phone" && p.token == "dev-phone.SECRET" && p.key == Data(0..<32))
+}
+
+@Test func rejectsBadPairingCodes() {
+    func wire(_ json: String) -> String { PairingPayload.prefix + Data(json.utf8).base64EncodedString().replacingOccurrences(of: "=", with: "") }
+    let k = Data(0..<32).base64EncodedString()
+    #expect(throws: PairingPayload.Invalid.format) { try PairingPayload.decode("garbage") }
+    #expect(throws: PairingPayload.Invalid.version) { try PairingPayload.decode(wire(#"{"v":2,"u":"https://r.example","d":"a","t":"a.longsecret","k":"\#(k)"}"#)) }
+    #expect(throws: PairingPayload.Invalid.url) { try PairingPayload.decode(wire(#"{"v":1,"u":"http://evil.example","d":"a","t":"a.longsecret","k":"\#(k)"}"#)) }
+    #expect(throws: PairingPayload.Invalid.token) { try PairingPayload.decode(wire(#"{"v":1,"u":"https://r.example","d":"a","t":"b.longsecret","k":"\#(k)"}"#)) }
+    #expect(throws: PairingPayload.Invalid.key) { try PairingPayload.decode(wire(#"{"v":1,"u":"https://r.example","d":"a","t":"a.longsecret","k":"AAAA"}"#)) }
+}
