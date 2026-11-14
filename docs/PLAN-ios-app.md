@@ -42,7 +42,8 @@ Related: [PLAN-apple-health-app.md](PLAN-apple-health-app.md) (product plan), [A
 | A1 Xcode download | 15 GB | done: Xcode 27.2, license accepted (2026-11-14) |
 | A2, A3 | 10 min, user | pending |
 | B3 crypto layer | 1 hour | **done**: `ios/AtomHealthCore` Swift package, 5 tests pass (`swift test`), byte-identical to Python via `tools/gen_crypto_vectors.py` |
-| B1, B2, B4 | about 1 day | pending (B1/B2 need the Apple ID in Xcode) |
+| B4 envelope + relay client | 2 hours | **done**: `Envelope.swift`, `RelayClient.swift` (https-only, 50-record batches, token never in errors), 10 Swift tests pass |
+| B1, B2 | 1 hour | pending (need the Apple ID in Xcode) |
 | B5 to B8 | 2 to 3 days | pending |
 | C | 10 min | pending |
 
