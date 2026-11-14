@@ -32,7 +32,8 @@ enum HK {
 
     static let kg = HKUnit.gramUnit(with: .kilo), g = HKUnit.gram(), kcal = HKUnit.kilocalorie(), pct = HKUnit.percent()
     static let readTypes: Set<HKObjectType> = [bodyMass, bodyFat, leanMass, energy, protein, carbs, fat, fiber, active, basal, steps, workout]
-    static let writeTypes: Set<HKSampleType> = [bodyMass, bodyFat, leanMass, energy, protein, carbs, fat, fiber, food]
+    // Correlations (food) cannot be requested directly; saving one needs write access to every nutrient inside it.
+    static let writeTypes: Set<HKSampleType> = [bodyMass, bodyFat, leanMass, energy, protein, carbs, fat, fiber]
 
     /// Samples written by this app. HealthKit only lets an app edit or delete what it wrote itself.
     static var ownSource: NSPredicate { HKQuery.predicateForObjects(from: HKSource.default()) }

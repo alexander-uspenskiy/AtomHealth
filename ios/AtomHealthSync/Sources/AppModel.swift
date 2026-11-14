@@ -55,6 +55,10 @@ final class AppModel {
     }
 
     func start() async {
+        #if DEBUG
+        // Test hook for the simulator only: `simctl launch … -debugPairingCode ahpair1:…` pairs without typing.
+        if config == nil, let code = UserDefaults.standard.string(forKey: "debugPairingCode") { pair(code: code) }
+        #endif
         guard config != nil else { return }
         do {
             try await reader.requestAuthorization()
