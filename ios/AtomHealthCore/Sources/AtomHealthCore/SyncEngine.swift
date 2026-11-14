@@ -9,7 +9,7 @@ public protocol RelayAPI: Sendable {
 extension RelayClient: RelayAPI {}
 
 /// A change that originated on this phone (from HealthKit or the user), waiting to be sent.
-public struct LocalChange: Equatable, Sendable {
+public struct LocalChange: Equatable, Sendable, Codable {
     public var type: EnvelopeType
     public var id: String
     public var op: Envelope.Op

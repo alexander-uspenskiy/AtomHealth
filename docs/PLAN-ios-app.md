@@ -45,7 +45,8 @@ Related: [PLAN-apple-health-app.md](PLAN-apple-health-app.md) (product plan), [A
 | B4 envelope + relay client | 2 hours | **done**: `Envelope.swift`, `RelayClient.swift` (https-only, 50-record batches, token never in errors), 10 Swift tests pass |
 | B1, B2 | 1 hour | pending (need the Apple ID in Xcode) |
 | B6 sync engine core | 3 hours | **done**: `SyncEngine.swift` (pull then push, versions, tombstones, cursor/outbox safety, forged records skipped), 18 Swift tests pass in total |
-| B5 HealthKit layer, B7 UI, B8 Mac pairing screen | 2 days | pending |
+| B5 HealthKit layer | 3 hours | **built and compiles for iOS Simulator; not yet run against HealthKit.** Pure mapping and validation (`HealthMapping.swift`) and a durable `JSONFileStateStore` are unit-tested (23 Swift tests pass on macOS). The HealthKit adapter (`AtomHealthKit/HealthKitAdapter.swift`: sink, reader, observers, anchors, background delivery) needs the app host to run. |
+| B7 app UI + signing, B8 Mac pairing screen | 1 day | pending |
 | C | 10 min | pending |
 
 ## Notes
