@@ -233,6 +233,13 @@ def headline(kind, s):
         # A meal tip is stored and never recalculated: label its numbers as a snapshot, not as today's total.
         label = "After this meal" if kind == "meal" and s.get("this_meal") else "Today"
         lines.append(f"{label}: {_k(t['kcal'])}{' / ' + _k(tgt) if tgt else ''} kcal{left} · protein {t['protein_g']:.0f} g")
+    if kind in ("day", "week") and s.get("weight_kg") is not None:
+        w = f"Weight: {s['weight_kg']:.1f} kg"
+        if s.get("target_weight_kg"):
+            w += f" (target {s['target_weight_kg']:g} kg)"
+        wk = ((s.get("body_trends") or {}).get("last_7_days") or {}).get("weight")
+        w += f" · 7 days: {wk['change']:+.1f} kg" if wk else " · 7-day trend: not enough readings yet"
+        lines.append(w)
     if kind == "week":
         if s["avg_kcal_logged_days"] is not None:
             lines.append(f"Last 7 days: average {_k(s['avg_kcal_logged_days'])} kcal on {s['days_logged']} logged day(s)"
