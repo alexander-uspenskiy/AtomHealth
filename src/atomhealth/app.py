@@ -7,6 +7,7 @@
 import argparse
 import asyncio
 import csv
+import hmac
 import io
 import json
 import os
@@ -20,7 +21,7 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
-from . import advisor, bodycomp, bot as tgbot, config, food
+from . import advisor, bodycomp, bot as tgbot, config, food, relay as relaymod, sync
 from .llm import LLMError
 
 PKG_DIR = Path(__file__).resolve().parent            # src/atomhealth
@@ -73,6 +74,7 @@ CREATE TABLE IF NOT EXISTS meal_photos(
 """)
 db.execute("PRAGMA foreign_keys=ON")
 food.retag_meals(db)
+sync.migrate(db)  # two-way Apple Health sync: sync ids, outbox triggers, activity/nutrition tables
 
 
 def kv_get(k, default=None):
@@ -192,7 +194,7 @@ def local_only(request):
 
 
 def health_auth(request):
-    if request.query.get("token") != token():
+    if not hmac.compare_digest(request.query.get("token", "").encode(), token().encode()):
         raise web.HTTPUnauthorized(text="bad token")
 
 
@@ -348,6 +350,54 @@ async def health_pending(request):
             "lean_mass_kg": d.get("lean_kg"), "bmi": d.get("bmi"),
         })
     return web.json_response(items)
+
+
+# ---------- two-way sync API (direct LAN/Tailscale path; the relay agent uses the same sync core) ----------
+def sync_auth(request):
+    """Bearer header preferred (keeps the token out of URLs and logs); ?token= kept for parity with /api/health."""
+    h = request.headers.get("Authorization", "")
+    given = h[7:] if h.startswith("Bearer ") else request.query.get("token", "")
+    if not hmac.compare_digest(given.encode(), token().encode()):
+        raise web.HTTPUnauthorized(text="bad token")
+
+
+async def sync_changes(request):
+    """Local changes (readings, confirmed meals) after `since`, as plaintext envelopes for the phone."""
+    sync_auth(request)
+    try:
+        since = int(request.query.get("since", 0))
+        limit = max(1, min(int(request.query.get("limit", 200)), 500))
+    except ValueError:
+        raise web.HTTPBadRequest(text="since/limit must be integers")
+    items, next_seq = sync.collect(db, since, limit, only_if_live=False)
+    return web.json_response({"items": items, "next_seq": next_seq, "has_more": next_seq < sync.outbox_max(db)})
+
+
+async def sync_push(request):
+    """Inbound envelopes from the phone: weight/body comp, activity days, nutrition days, workouts."""
+    sync_auth(request)
+    body = await request.json()
+    items = body.get("items") if isinstance(body, dict) else None
+    if not isinstance(items, list) or len(items) > 500:
+        raise web.HTTPBadRequest(text="items must be a list of at most 500 envelopes")
+    counts = sync.apply_batch(db, items)
+    sync.log(db, "push-in", None, len(items), "ok", json.dumps(counts))
+    if counts["applied"] or counts["merged"]:
+        publish({"type": "reading"})
+    return web.json_response(counts)
+
+
+async def sync_status(request):
+    sync_auth(request)
+    agent = request.app.get("relay")
+    return web.json_response({**sync.status(db), "relay": agent.status() if agent else None})
+
+
+async def sync_config(request):
+    sync_auth(request)
+    return web.json_response({"envelope_version": sync.ENVELOPE_VERSION,
+                              "outbound_types": list(sync.OUTBOUND_TYPES), "inbound_types": list(sync.INBOUND_TYPES),
+                              "units": {"weight": "kg", "energy": "kcal", "mass": "g"}})
 
 
 async def health_ack(request):
@@ -596,6 +646,8 @@ async def food_status(request):
 
 async def on_start(app):
     await app["bot"].apply()
+    if app["relay"].configured:  # paired with the Cloudflare relay (python -m atomhealth.relay pair)
+        app["relay_task"] = asyncio.create_task(app["relay"].run())
     if not app["no_ble"]:
         app["ble"] = asyncio.create_task(ble_task())
     else:
@@ -603,6 +655,8 @@ async def on_start(app):
 
 
 async def on_stop(app):
+    if "relay_task" in app:
+        app["relay_task"].cancel()
     await app["bot"].stop()
 
 
@@ -610,6 +664,7 @@ def make_app(lan, no_ble):
     app = web.Application()
     app["lan"], app["no_ble"] = lan, no_ble
     config.set_llm_overrides(kv_get("ai", {}))
+    app["relay"] = relaymod.RelayAgent(db, kv_get, kv_set)
     app["bot"] = tgbot.TelegramBot(db, cfg=telegram_cfg, target_kcal=target_kcal, latest_weight=latest_weight,
                                    kv_get=kv_get, kv_set=kv_set, plan=nutrition_plan,
                                    context=advice_snapshot, notify=lambda: publish({"type": "advice"}))
@@ -634,10 +689,17 @@ def make_app(lan, no_ble):
         web.post("/api/settings/ai", set_ai), web.post("/api/settings/ai/test", test_ai),
         web.delete("/api/readings/{id}", del_reading), web.get("/api/export.csv", export_csv),
         web.get("/api/health/pending", health_pending), web.post("/api/health/ack", health_ack),
+        web.get("/api/sync/v1/changes", sync_changes), web.post("/api/sync/v1/push", sync_push),
+        web.get("/api/sync/v1/status", sync_status), web.get("/api/sync/v1/config", sync_config),
     ])
     app.on_startup.append(on_start)
     app.on_cleanup.append(on_stop)
     return app
+
+
+def startup_banner(port):
+    """Never include the health token: stdout goes to data/server.log (launchd) and shell history/scrollback."""
+    return f"Dashboard: http://localhost:{port}   (Health token: shown on the Settings tab)"
 
 
 def main():
@@ -646,7 +708,7 @@ def main():
     ap.add_argument("--no-ble", action="store_true")
     ap.add_argument("--port", type=int, default=8765)
     a = ap.parse_args()
-    print(f"Dashboard: http://localhost:{a.port}   Health token: {token()}")
+    print(startup_banner(a.port), flush=True)
     web.run_app(make_app(a.lan, a.no_ble), host="0.0.0.0" if a.lan else "127.0.0.1",
                 port=a.port, print=None)
 
