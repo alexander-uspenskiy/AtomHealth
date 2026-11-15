@@ -64,6 +64,7 @@ struct ChatView: View {
                 composer
             }
             .background(Color(.systemGroupedBackground))
+            .appTabBar(model)
             .overlay(alignment: .top) { toastView }
             .navigationTitle("Coach").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -211,6 +212,10 @@ struct ChatView: View {
             Text("Your AtomHealth coach").font(.title3.weight(.semibold))
             Text("Send a photo of your meal, describe it in words, or ask a question. It works like the Telegram bot.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Menu { photoActions } label: {
+                Label("Add a meal photo", systemImage: "camera.fill").font(.headline).padding(.horizontal, 22).padding(.vertical, 12)
+                    .foregroundStyle(.white).background(Theme.accent, in: Capsule())
+            }
             HStack {
                 ForEach(["/start", "/today"], id: \.self) { c in
                     Button(c) { Task { await model.sendChat(text: c) } }.buttonStyle(.bordered)
@@ -273,13 +278,11 @@ struct ChatView: View {
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            Menu {
-                Button { showPicker = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
-                if CameraPicker.available { Button { showCamera = true } label: { Label("Take Photo", systemImage: "camera") } }
-            } label: {
-                Image(systemName: "paperclip").font(.title3).frame(width: 36, height: 36)
+            Menu { photoActions } label: {
+                Image(systemName: "camera.fill").font(.system(size: 18)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40).background(Theme.accent, in: Circle())
             }
-            .disabled(staged.count >= ChatWire.maxPhotos).accessibilityLabel("Attach a photo")
+            .disabled(staged.count >= ChatWire.maxPhotos).accessibilityLabel("Attach a meal photo")
 
             HStack(alignment: .bottom, spacing: 4) {
                 TextField(staged.isEmpty ? "Message or /command" : "Add a caption (e.g. 200 g rice)", text: $draft, axis: .vertical)
@@ -296,6 +299,12 @@ struct ChatView: View {
                 .foregroundStyle(canSend ? Theme.accent : Color.secondary.opacity(0.4)).disabled(!canSend).accessibilityLabel("Send")
         }
         .padding(.horizontal, 10).padding(.vertical, 8).background(.bar)
+    }
+
+    /// The two ways to add a meal photo; shared by the camera button and the empty chat.
+    @ViewBuilder private var photoActions: some View {
+        if CameraPicker.available { Button { showCamera = true } label: { Label("Take a meal photo", systemImage: "camera") } }
+        Button { showPicker = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle") }
     }
 
     private var commandsSheet: some View {

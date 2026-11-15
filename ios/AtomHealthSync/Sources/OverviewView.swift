@@ -26,6 +26,7 @@ struct OverviewView: View {
                 }
             }
             .background(Color(.systemGroupedBackground))
+            .appTabBar(model)
             .navigationTitle("Overview")
             .refreshable { await model.syncNow() }
         }

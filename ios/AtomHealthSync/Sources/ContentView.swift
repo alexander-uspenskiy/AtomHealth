@@ -4,7 +4,6 @@ struct ContentView: View {
     @State private var model = AppModel()
     @State private var code = ""
     @Environment(\.scenePhase) private var scenePhase
-    @State private var keyboardUp = false
 
     var body: some View {
         Group {
@@ -26,14 +25,11 @@ struct ContentView: View {
                             if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
                         }
                         .navigationTitle("Sync")
+                        .appTabBar(model)
                     }
                     .toolbar(.hidden, for: .tabBar).tag(AppModel.Tab.sync)
                 }
                 .tint(Theme.accent)
-                // our own bar: Chat is the main action, so it is a raised round button in the middle
-                .safeAreaInset(edge: .bottom, spacing: 0) { if !keyboardUp { AppTabBar(model: model) } }
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
-                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
             }
         }
         .task { await model.start() }
@@ -123,4 +119,21 @@ struct AppTabBar: View {
         }
         .buttonStyle(.plain).accessibilityLabel("Chat").accessibilityAddTraits(on ? .isSelected : [])
     }
+}
+
+/// Puts the bar at the bottom of one screen. It has to be applied per screen (an inset on the TabView does not reach
+/// the screens inside it, so the chat's message field would end up under the bar) and it hides while the keyboard is up.
+struct TabBarInset: ViewModifier {
+    let model: AppModel
+    @State private var keyboardUp = false
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .bottom, spacing: 0) { if !keyboardUp { AppTabBar(model: model) } }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
+    }
+}
+
+extension View {
+    func appTabBar(_ model: AppModel) -> some View { modifier(TabBarInset(model: model)) }
 }
