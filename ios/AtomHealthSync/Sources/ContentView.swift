@@ -22,6 +22,8 @@ struct ContentView: View {
                         .badge(model.tab == .chat ? 0 : model.chat.unread).tag(AppModel.Tab.chat)
                     NavigationStack {
                         Form {
+                            Section { ChatShortcut(model: model) }
+                                .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
                             synced
                             if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
                         }

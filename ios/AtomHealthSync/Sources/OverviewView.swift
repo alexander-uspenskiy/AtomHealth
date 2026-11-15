@@ -12,6 +12,7 @@ struct OverviewView: View {
                 if let s = model.dashboard {
                     let m = DashboardMath(s)
                     LazyVStack(spacing: 14) {
+                        ChatShortcut(model: model)
                         if let r = m.latest { hero(r, s) }
                         kpiGrid(m)
                         if let g = m.weightGauge() { Card { RangeGauge(g: g) } }
@@ -22,7 +23,7 @@ struct OverviewView: View {
                     }
                     .padding(16)
                 } else {
-                    empty.padding(24)
+                    VStack { ChatShortcut(model: model); empty }.padding(24)
                 }
             }
             .background(Color(.systemGroupedBackground))
@@ -96,10 +97,6 @@ struct OverviewView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             ForEach(Array(items.enumerated()), id: \.offset) { _, i in adviceView(i) }
-            Button { model.tab = .chat } label: {
-                Label("Ask the coach", systemImage: "bubble.left.and.bubble.right.fill").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent).tint(Theme.accent)
         }
     }
 
