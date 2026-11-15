@@ -21,7 +21,7 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
-from . import advisor, bodycomp, bot as tgbot, config, food, relay as relaymod, sync
+from . import activity, advisor, bodycomp, bot as tgbot, config, food, relay as relaymod, sync
 from .llm import LLMError
 
 PKG_DIR = Path(__file__).resolve().parent            # src/atomhealth
@@ -234,7 +234,7 @@ async def state(request):
         "nutrition": bodycomp.nutrition(prof, rows[-1]["weight"] if rows else None),
         "readings": [reading_dict(r, prof) for r in rows],
         "live": live, "health_token": token(), "advice": advisor.feed(db),
-        "meals": meal_history(),
+        "meals": meal_history(), "activity": activity.feed(db),
     })
 
 

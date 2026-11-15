@@ -259,6 +259,16 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
 .info:hover, .info:focus-visible, .info.open { color:var(--text); border-color:var(--text); }
 .info .tip { display:none; position:absolute; z-index:30; top:21px; left:-8px; width:max-content; max-width:min(270px,72vw); padding:9px 11px; border-radius:10px; background:var(--surface); color:var(--text); border:1px solid var(--border); box-shadow:0 6px 20px rgba(0,0,0,.35); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; font-size:12px; font-weight:400; font-style:normal; line-height:1.45; text-align:left; white-space:normal; cursor:default; }
 .info:hover .tip, .info:focus-visible .tip, .info.open .tip { display:block; }
+/* ---------- activity (Apple Health) ---------- */
+.wk { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+.wk i { width:9px; height:9px; border-radius:3px; background:var(--muted); flex:none; }
+.wk.cardio i { background:var(--z5); } .wk.strength i { background:var(--z2); } .wk.mind i { background:var(--accent); }
+.wk.sport i { background:var(--z4); } .wk.outdoor i { background:var(--z1); }
+.share { display:inline-block; height:6px; border-radius:3px; background:var(--accent); vertical-align:middle; margin-right:8px; min-width:2px; }
+.act-note { color:var(--muted); font-size:12.5px; margin-top:10px; }
+.link { background:none; border:0; color:var(--accent); font:inherit; font-weight:600; cursor:pointer; padding:0; }
+.link:hover { text-decoration:underline; }
+.more-row { text-align:center; margin-top:10px; }
 </style>
 </head>
 <body>
@@ -269,6 +279,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
     <button role="tab" data-tab="trends" aria-selected="false">Trends</button>
     <button role="tab" data-tab="analysis" aria-selected="false">Body analysis</button>
     <button role="tab" data-tab="nutrition" aria-selected="false">Nutrition</button>
+    <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
     <button role="tab" data-tab="history" aria-selected="false">History</button>
     <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
   </nav>
@@ -307,6 +318,12 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
     <div class="nind" id="nind"></div>
     <div class="nind idx" id="nidx"></div>
     <div class="scroll" id="todayMeals"></div>
+  </div>
+
+  <div class="card" id="actCard" hidden>
+    <div class="card-h"><div><h2>Activity</h2><p class="sub" id="actCardSub"></p></div>
+      <button class="link" id="actMore">All activity →</button></div>
+    <div class="kpis" id="actCardKpis"></div>
   </div>
 
   <div class="cols">
@@ -369,6 +386,28 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
     </div>
   </div>
   <div id="nutBody"></div>
+</section>
+
+<!-- ============ ACTIVITY ============ -->
+<section class="view" id="v-activity" hidden>
+  <div class="toolbar">
+    <div><h2 style="margin:0;font-size:18px">Activity</h2><div class="muted" id="actSub"></div></div>
+    <div class="pills" id="actRange"><button data-d="7" aria-pressed="false">7 days</button><button data-d="30" aria-pressed="true">30 days</button><button data-d="90" aria-pressed="false">90 days</button><button data-d="365" aria-pressed="false">1 year</button></div>
+  </div>
+  <div class="card empty" id="actEmpty" hidden>No Apple Health activity yet. Pair the AtomHealth iPhone app (<b>python -m atomhealth.relay pair-phone</b>) and open it once: daily energy, steps and workouts will appear here after the next sync.</div>
+  <div id="actMain">
+    <div class="kpis" id="actKpis" style="margin-bottom:14px"></div>
+    <div class="charts">
+      <div class="card wide"><div class="card-h"><div><h2>Daily energy</h2><p class="sub" id="cEnergySub">Active + resting energy burned, with the food you logged</p></div></div><div class="chart-box"><canvas id="cEnergy"></canvas></div></div>
+      <div class="card"><div class="card-h"><div><h2>Steps</h2><p class="sub" id="cStepsSub"></p></div></div><div class="chart-box"><canvas id="cSteps"></canvas></div></div>
+      <div class="card"><div class="card-h"><div><h2 id="cWkTitle">Workout minutes</h2><p class="sub" id="cWkSub"></p></div></div><div class="chart-box"><canvas id="cWk"></canvas></div></div>
+    </div>
+    <div class="cols" style="margin-top:14px">
+      <div class="card"><div class="card-h"><div><h2>Workouts</h2><p class="sub" id="wkListSub"></p></div></div><div class="scroll" id="wkList"></div><div class="more-row" id="wkMore"></div></div>
+      <div class="card"><div class="card-h"><div><h2>By type</h2><p class="sub">Share of workout time in the selected period</p></div></div><div class="scroll" id="wkTypes"></div></div>
+    </div>
+    <p class="act-note">Burn and steps are totals from all sources in Apple Health (Watch, iPhone, other apps). Today is still in progress, so averages use completed days only. Resting energy is Apple's estimate, not a measurement.</p>
+  </div>
 </section>
 
 <!-- ============ HISTORY ============ -->
@@ -460,7 +499,7 @@ const bmiKg = b => b * hM() * hM();
 function applyTheme(t) {
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
   document.querySelectorAll('#theme button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === t));
-  if (S) renderCharts();
+  if (S) { renderCharts(); if (typeof renderActivity === 'function') renderActivity(); }
 }
 let theme = 'auto'; try { theme = localStorage.getItem('theme') || 'auto'; } catch (e) {}
 document.querySelectorAll('#theme button').forEach(b => b.onclick = () => { try { localStorage.setItem('theme', b.dataset.t); } catch (e) {} applyTheme(b.dataset.t); });
@@ -473,6 +512,7 @@ function showTab(name) {
   document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'v-' + name);
   try { history.replaceState(null, '', '#' + name); } catch (e) {}
   if (name === 'trends') renderCharts();
+  if (name === 'activity' && S) renderActivity();
   if (name === 'settings' && typeof loadCfg === 'function') loadCfg(false);
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
@@ -485,7 +525,7 @@ document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
 /* ---------------- data ---------------- */
 async function load() { S = await (await fetch('/api/state')).json(); renderAll(); }
 function renderAll() {
-  renderLive(S.live); renderKpis(); renderGauges(); renderGoal(); renderStats(); renderAnalysis(); renderNutrition(); renderHist(); renderMeals(); renderToday(); renderCoach(); fillSettings(); renderCharts();
+  renderLive(S.live); renderActivity(); renderActCard(); renderKpis(); renderGauges(); renderGoal(); renderStats(); renderAnalysis(); renderNutrition(); renderHist(); renderMeals(); renderToday(); renderCoach(); fillSettings(); renderCharts();
 }
 
 function renderLive(l) {
@@ -692,6 +732,14 @@ function renderAnalysis() {
 /* ---------------- nutrition ---------------- */
 const NKEYS = ['activity', 'diet_goal', 'diet_pace', 'diet_style'];
 const GOALS = { lose: 'Lose weight', maintain: 'Maintain weight', gain: 'Gain weight' };
+function burnNote(n) {
+  const mb = measuredBurn(14);
+  if (!mb || !n.maintenance) return '';
+  const pct = (mb.avg / n.maintenance - 1) * 100, off = Math.abs(pct) >= 10;
+  return `<div class="callout" style="margin-top:14px"><b>Measured burn:</b> ${int(mb.avg)} kcal/day over your last ${mb.n} full days in Apple Health, against the ${n.maintenance} kcal maintenance estimate (${sgn(pct, 0)}%).`
+    + (off ? ` ${pct > 0 ? 'You move more than the activity level assumes' : 'You move less than the activity level assumes'}; consider adjusting it above.` : ' The estimate matches your real activity.')
+    + ` <button class="link" onclick="showTab('activity')">Activity →</button></div>`;
+}
 function renderNutrition() {
   const sel = $('n_activity');
   if (!sel.options.length) sel.innerHTML = S.ref.activity.map(a => `<option value="${a.factor}">${a.label}</option>`).join('');
@@ -723,6 +771,7 @@ function renderNutrition() {
     </div>
   </div>
   ${n.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join('')}
+  ${burnNote(n)}
   <div class="grid g2" style="margin-top:14px">
     <div class="card"><div class="card-h"><div><h2>Macronutrients</h2><p class="sub">Protein ${n.protein_per_kg} g per kg of ${n.protein_basis_kg} kg · fat and carbohydrate share the rest</p></div></div>
       <div class="macro-bar" role="img" aria-label="Macro split">${n.macros.map(m => `<i class="m-${m.key}" style="width:${m.pct}%"></i>`).join('')}</div>
@@ -753,6 +802,144 @@ function renderNutrition() {
 NKEYS.forEach(k => $('n_' + k).onchange = async () => {
   await fetch('/api/profile', { method: 'POST', body: JSON.stringify({ [k]: $('n_' + k).value }) }); load();
 });
+
+/* ---------------- activity (Apple Health) ---------------- */
+let actRange = 30, wkAll = false;
+const A = () => S.activity || { days: [], workouts: [], today: '' };
+const hasAct = () => A().days.length || A().workouts.length;
+const dayKey = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+const keyDate = k => new Date(k + 'T12:00:00');
+const keyAgo = n => dayKey(new Date(Date.now() - n * 864e5));
+const fday = k => keyDate(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const int = v => v == null ? '—' : Math.round(v).toLocaleString();
+const mean = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null;
+const hm = m => m == null ? '—' : m >= 60 ? `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')} min` : `${Math.round(m)} min`;
+function ago(ts) {
+  if (!ts) return '';
+  const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+  return m < 2 ? 'just now' : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+}
+// days inside the last n days (inclusive of today); `complete` drops today, which is still in progress
+const actDays = (n, complete = false) => A().days.filter(d => d.day >= keyAgo(n - 1) && !(complete && d.day === A().today));
+const burnOf = d => d.active_kcal != null && d.basal_kcal != null ? d.active_kcal + d.basal_kcal : null;
+const intakeOf = d => (d.logged_kcal || 0) + (d.other_kcal || 0) || null;
+const wkIn = n => A().workouts.filter(w => w.ts * 1000 >= Date.now() - n * 864e5);
+// measured average daily burn over recent completed days (also used by the Nutrition tab)
+function measuredBurn(n = 7) {
+  const b = actDays(n, true).map(burnOf).filter(v => v != null);
+  return b.length >= 3 ? { avg: mean(b), n: b.length } : null;
+}
+const vsAvg = (v, avg, unit = '') => v == null || avg == null ? '&nbsp;' : `<span class="${Math.abs(v - avg) < avg * .03 ? 't2' : v > avg ? 'pos' : 'neg'}">${sgn(v - avg, 0)}${unit} vs 7-day avg</span>`;
+
+function renderActKpis(box, n) {
+  const days = A().days, latest = days.length ? days[days.length - 1] : null;
+  const prior = actDays(8, true), isToday = latest && latest.day === A().today;
+  const lab = isToday ? 'today' : latest ? fday(latest.day) : '';
+  const kp = (l, v, u, d) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div><div class="d">${d}</div></div>`;
+  const out = [];
+  if (latest && latest.active_kcal != null) out.push(kp(`Active energy ${lab}`, int(latest.active_kcal), 'kcal', vsAvg(latest.active_kcal, mean(prior.map(d => d.active_kcal).filter(v => v != null)), '')));
+  if (latest && latest.steps != null) out.push(kp(`Steps ${lab}`, int(latest.steps), '', vsAvg(latest.steps, mean(prior.map(d => d.steps).filter(v => v != null)), '')));
+  if (n) {
+    const ws = wkIn(n), mins = ws.reduce((s, w) => s + (w.minutes || 0), 0), kc = ws.reduce((s, w) => s + (w.kcal || 0), 0);
+    out.push(kp(`Workouts · ${n} days`, ws.length, '', `<span class="t2">${hm(mins)} · ${int(kc)} kcal</span>`));
+    const mb = measuredBurn(Math.min(n, 30));
+    if (mb) {
+      const est = S.nutrition && S.nutrition.maintenance;
+      out.push(kp('Avg daily burn', int(mb.avg), 'kcal', est ? `<span class="t2">estimate ${est} · ${sgn((mb.avg / est - 1) * 100, 0)}%</span>` : `<span class="t2">${mb.n} full days</span>`));
+    }
+    const bal = actDays(n, true).filter(d => burnOf(d) != null && intakeOf(d) != null).map(d => intakeOf(d) - burnOf(d));
+    if (bal.length >= 3) { const b = mean(bal); out.push(kp('Avg energy balance', sgn(b, 0), 'kcal', `<span class="t2">eaten − burned · ${bal.length} days logged</span>`)); }
+  }
+  box.innerHTML = out.join('') || '<div class="muted">No daily totals yet.</div>';
+}
+
+function mkBars(id, labels, datasets, { stacked = false, unit = '', ticks = 8 } = {}) {
+  const grid = css('--border'), txt = css('--muted');
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id), {
+    type: 'bar', data: { labels, datasets: datasets.filter(Boolean) },
+    options: {
+      animation: false, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: css('--text2'), usePointStyle: true, boxWidth: 8, filter: i => i.text && !i.text.startsWith('_') } },
+        tooltip: { backgroundColor: css('--text'), titleColor: css('--surface'), bodyColor: css('--surface'), padding: 10, cornerRadius: 8,
+          callbacks: { title: i => /^\d{4}-\d{2}-\d{2}$/.test(i[0].label) ? keyDate(i[0].label).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : i[0].label,
+            label: c => ` ${c.dataset.label}: ${Math.round(c.parsed.y).toLocaleString()}${unit}` } },
+      },
+      scales: {
+        x: { stacked, grid: { display: false }, border: { display: false }, ticks: { color: txt, maxTicksLimit: ticks, maxRotation: 0, callback(v) { const l = this.getLabelForValue(v); return /^\d{4}-\d{2}-\d{2}$/.test(l) ? fday(l) : l; } } },
+        y: { stacked, beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: txt, callback: v => v.toLocaleString() } },
+      },
+    },
+  });
+}
+const monday = k => { const d = keyDate(k), w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); return dayKey(d); };
+
+function renderActivity() {
+  const empty = !hasAct();
+  $('actEmpty').hidden = !empty; $('actMain').hidden = empty;
+  $('actSub').textContent = empty ? '' : 'Synced from Apple Health' + (A().updated ? ' · updated ' + ago(A().updated) : '');
+  if (empty) return;
+  const n = actRange;
+  renderActKpis($('actKpis'), n);
+  if ($('v-activity').hidden) return;   // charts need a visible canvas
+  const days = actDays(n), labels = days.map(d => d.day), acc = css('--accent');
+  const hasIntake = days.some(d => intakeOf(d) != null);
+  mkBars('cEnergy', labels, [
+    { label: 'Active', data: days.map(d => d.active_kcal), backgroundColor: css('--z5'), borderRadius: 2, order: 2, stack: 'e' },
+    { label: 'Resting', data: days.map(d => d.basal_kcal), backgroundColor: css('--z1') + 'aa', borderRadius: 2, order: 2, stack: 'e' },
+    hasIntake && { type: 'line', label: 'Food logged', data: days.map(intakeOf), borderColor: css('--z2'), backgroundColor: css('--z2'), borderWidth: 2.2, pointRadius: n > 60 ? 0 : 3, tension: .25, spanGaps: true, order: 1 },
+  ], { stacked: true, unit: ' kcal' });
+  $('cEnergySub').textContent = hasIntake ? 'Active + resting energy burned (bars) against food you logged (line)' : 'Active + resting energy burned. Log meals to compare with what you eat.';
+  const sa = mean(actDays(n, true).map(d => d.steps).filter(v => v != null));
+  mkBars('cSteps', labels, [
+    { label: 'Steps', data: days.map(d => d.steps), backgroundColor: acc, borderRadius: 2, order: 2 },
+    sa != null && { type: 'line', label: 'Average', data: days.map(() => sa), borderColor: css('--z4'), borderDash: [6, 5], borderWidth: 2, pointRadius: 0, order: 1 },
+  ]);
+  $('cStepsSub').textContent = sa != null ? `Average ${int(sa)} a day over completed days` : '';
+  // workout minutes: per day for short ranges, per week for long ones
+  const ws = wkIn(n), perDay = n <= 30, buckets = new Map();
+  if (perDay) days.forEach(d => buckets.set(d.day, 0));
+  else { for (let i = n - 1; i >= 0; i--) buckets.set(monday(keyAgo(i)), 0); }
+  ws.forEach(w => { const k = perDay ? dayKey(new Date(w.ts * 1000)) : monday(dayKey(new Date(w.ts * 1000))); if (buckets.has(k) || !perDay) buckets.set(k, (buckets.get(k) || 0) + (w.minutes || 0)); });
+  const bk = [...buckets.keys()].sort();
+  $('cWkTitle').textContent = perDay ? 'Workout minutes per day' : 'Workout minutes per week';
+  $('cWkSub').textContent = perDay ? '' : 'Weeks start on Monday';
+  mkBars('cWk', perDay ? bk : bk.map(k => 'Wk ' + fday(k)), [{ label: 'Minutes', data: bk.map(k => buckets.get(k)), backgroundColor: css('--z2'), borderRadius: 3 }], { unit: ' min' });
+  renderWorkouts(ws);
+}
+
+function renderWorkouts(ws) {
+  $('wkListSub').textContent = ws.length ? `${ws.length} in the last ${actRange} days, newest first` : '';
+  if (!ws.length) { $('wkList').innerHTML = '<div class="empty">No workouts in this period.</div>'; $('wkMore').innerHTML = ''; $('wkTypes').innerHTML = '<div class="empty">—</div>'; return; }
+  const shown = wkAll ? ws : ws.slice(0, 12);
+  $('wkList').innerHTML = `<table><thead><tr><th>When</th><th class="l">Type</th><th>Time</th><th>Energy</th><th>Distance</th></tr></thead><tbody>${shown.map(w =>
+    `<tr><td>${esc(fdt(w.ts))}</td><td class="l"><span class="wk ${esc(w.group)}"><i></i>${esc(w.type)}</span></td><td>${w.minutes == null ? '—' : hm(w.minutes)}</td><td>${w.kcal == null ? '—' : int(w.kcal) + ' kcal'}</td><td>${w.km ? fmt(w.km, 2) + ' km' : '—'}</td></tr>`).join('')}</tbody></table>`;
+  $('wkMore').innerHTML = ws.length > 12 ? `<button class="link" id="wkToggle">${wkAll ? 'Show fewer' : `Show all ${ws.length}`}</button>` : '';
+  if (ws.length > 12) $('wkToggle').onclick = () => { wkAll = !wkAll; renderWorkouts(ws); };
+  const by = new Map();
+  ws.forEach(w => { const t = by.get(w.type) || { type: w.type, group: w.group, n: 0, min: 0, kcal: 0, km: 0 }; t.n++; t.min += w.minutes || 0; t.kcal += w.kcal || 0; t.km += w.km || 0; by.set(w.type, t); });
+  const rows = [...by.values()].sort((a, b) => b.min - a.min), tot = rows.reduce((s, r) => s + r.min, 0) || 1;
+  $('wkTypes').innerHTML = `<table><thead><tr><th class="l">Type</th><th>Sessions</th><th>Time</th><th>Energy</th></tr></thead><tbody>${rows.map(r =>
+    `<tr><td class="l"><span class="wk ${esc(r.group)}"><i></i>${esc(r.type)}</span><div class="muted" style="font-size:12px"><span class="share" style="width:${Math.round(r.min / tot * 90)}px"></span>${Math.round(r.min / tot * 100)}%${r.km ? ' · ' + fmt(r.km, 1) + ' km' : ''}</div></td><td>${r.n}</td><td>${hm(r.min)}</td><td>${int(r.kcal)} kcal</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderActCard() {
+  const card = $('actCard');
+  card.hidden = !hasAct();
+  if (card.hidden) return;
+  $('actCardSub').textContent = 'Apple Health' + (A().updated ? ' · synced ' + ago(A().updated) : '');
+  renderActKpis($('actCardKpis'), 7);
+  const w = A().workouts[0];
+  if (w) $('actCardKpis').insertAdjacentHTML('beforeend', `<div class="kpi"><div class="l">Last workout</div><div class="v" style="font-size:17px">${esc(w.type)}</div><div class="d t2">${esc(fdate(w.ts))}${w.minutes ? ' · ' + hm(w.minutes) : ''}${w.kcal ? ' · ' + int(w.kcal) + ' kcal' : ''}</div></div>`);
+}
+$('actMore').onclick = () => showTab('activity');
+document.querySelectorAll('#actRange button').forEach(b => b.onclick = () => {
+  actRange = +b.dataset.d; wkAll = false;
+  document.querySelectorAll('#actRange button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  renderActivity();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => S && renderActivity());
 
 /* ---------------- history ---------------- */
 function renderHist() {
@@ -1171,7 +1358,7 @@ function renderCharts() {
 const es = new EventSource('/api/events');
 es.onmessage = e => { const ev = JSON.parse(e.data); if (ev.type === 'advice') { load(); return; } if (S && ev.ble !== undefined) { S.live = ev; renderLive(ev); } if (ev.type === 'saved') load(); };
 
-const TABS = ['overview', 'trends', 'analysis', 'nutrition', 'history', 'settings'];
+const TABS = ['overview', 'trends', 'analysis', 'nutrition', 'activity', 'history', 'settings'];
 const fromHash = () => { const h = location.hash.slice(1); return TABS.includes(h) ? h : 'overview'; };
 addEventListener('hashchange', () => showTab(fromHash()));
 showTab(fromHash());

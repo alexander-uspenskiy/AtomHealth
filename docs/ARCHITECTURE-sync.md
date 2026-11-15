@@ -144,7 +144,7 @@ Auth: `Authorization: Bearer <health token>` (preferred) or `?token=`; constant-
 | Component | Description | Plan phase |
 |---|---|---|
 | Pairing UI | Settings tab: QR + device list + revoke (CLI exists) | 1b |
-| Dashboard use of synced data | Activity tile, TDEE from real burn, advisor reads `activity_days`/`nutrition_days`; surface measured `fat_pct_m`/`lean_kg_m` in `reading_dict` | 4 |
+| Dashboard use of synced data | **Done:** Activity tab, Overview card and measured-burn note in Nutrition (`activity.py`, `/api/state` → `activity`). **Still open:** advisor reads `activity_days`/`nutrition_days`; surface measured `fat_pct_m`/`lean_kg_m` in `reading_dict`; activity on the phone's Overview | 4 |
 | Outbox pruning | `sync_outbox` grows by one small row per change; prune rows older than both consumers' cursors | 5 |
 | iOS app | HealthStore, SyncEngine, `RelayClient` + direct client behind one `SyncTransport` protocol, same envelope + AAD format | 2–5 |
 | Rate limiting | Cloudflare WAF rule on `/v1/*` | before pairing real devices |

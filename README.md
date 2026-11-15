@@ -12,6 +12,7 @@ and serves a dashboard with estimated body composition, goals and statistics.
 - **Trends** – weight and body-composition charts over time.
 - **Body analysis** – detailed breakdown of fat, lean mass, water, BMR and related indices.
 - **Nutrition** – calorie and diet-pace guidance based on your goal and activity level.
+- **Activity** – Apple Health data from the iPhone app: daily active/resting energy, steps, workouts by type, and food logged against burn. A summary card also appears on Overview, and Nutrition compares your measured burn with the maintenance estimate.
 - **History** – every reading, with manual entry, delete, CSV import and export.
 - **Settings** – height, age/birth date, sex, targets, and the Apple Health Shortcut recipe.
 - Light/dark/system themes, installable as a PWA, data stays on your machine.
