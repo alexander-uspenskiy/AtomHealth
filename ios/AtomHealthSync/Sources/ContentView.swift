@@ -15,7 +15,7 @@ struct ContentView: View {
                         pairing
                         if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
                     }
-                    .navigationTitle("AtomHealth Sync")
+                    .navigationTitle("Atom Health")
                 }
             } else {
                 TabView(selection: $tab) {

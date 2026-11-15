@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>AtomHealth Sync</string>
+	<string>Atom Health</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -21,11 +21,11 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
-	<string>AtomHealth Sync takes meal photos for the chat with your AtomHealth coach. Photos are resized, then sent end-to-end encrypted to your Mac.</string>
+	<string>Atom Health takes meal photos for the chat with your AtomHealth coach. Photos are resized, then sent end-to-end encrypted to your Mac.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>AtomHealth Sync reads your weight, workouts, activity and nutrition from Apple Health so your AtomHealth Mac app can use them.</string>
+	<string>Atom Health reads your weight, workouts, activity and nutrition from Apple Health so your AtomHealth Mac app can use them.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>AtomHealth Sync writes weights and meals logged in AtomHealth into Apple Health.</string>
+	<string>Atom Health writes weights and meals logged in AtomHealth into Apple Health.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
