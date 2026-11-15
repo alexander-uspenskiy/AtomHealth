@@ -54,36 +54,6 @@ struct Card<Content: View>: View {
     }
 }
 
-/// The big entry to the chat: Chat is a main part of the app, so it is shown large on the other screens too.
-struct ChatShortcut: View {
-    let model: AppModel
-    var body: some View {
-        Button { model.tab = .chat } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 30))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Chat with your coach").font(.title3.weight(.bold))
-                    Text("Meal photos, questions, today's advice").font(.footnote).opacity(0.85)
-                }
-                Spacer(minLength: 8)
-                if model.chat.unread > 0 {
-                    Text("\(model.chat.unread)").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
-                        .padding(.horizontal, 10).padding(.vertical, 4).background(.white, in: Capsule())
-                        .accessibilityLabel("\(model.chat.unread) unread")
-                }
-                Image(systemName: "chevron.right").font(.headline.weight(.semibold)).opacity(0.8)
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18).frame(maxWidth: .infinity, minHeight: 76)
-            .background(LinearGradient(colors: [Color(hex: 0x4F46E5), Color(hex: 0x7C3AED)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: Theme.accent.opacity(0.35), radius: 10, y: 4)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Chat with your coach")
-    }
-}
-
 struct Chip: View {
     let text: String
     var color: Color = Theme.accent

@@ -12,7 +12,6 @@ struct OverviewView: View {
                 if let s = model.dashboard {
                     let m = DashboardMath(s)
                     LazyVStack(spacing: 14) {
-                        ChatShortcut(model: model)
                         if let r = m.latest { hero(r, s) }
                         kpiGrid(m)
                         if let g = m.weightGauge() { Card { RangeGauge(g: g) } }
@@ -23,7 +22,7 @@ struct OverviewView: View {
                     }
                     .padding(16)
                 } else {
-                    VStack { ChatShortcut(model: model); empty }.padding(24)
+                    empty.padding(24)
                 }
             }
             .background(Color(.systemGroupedBackground))

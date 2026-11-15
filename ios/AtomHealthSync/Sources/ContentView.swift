@@ -22,8 +22,6 @@ struct ContentView: View {
                     ChatView(model: model).toolbar(.hidden, for: .tabBar).tag(AppModel.Tab.chat)
                     NavigationStack {
                         Form {
-                            Section { ChatShortcut(model: model) }
-                                .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
                             synced
                             if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
                         }
