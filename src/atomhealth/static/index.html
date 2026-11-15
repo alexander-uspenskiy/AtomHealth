@@ -400,7 +400,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
     <div class="charts">
       <div class="card wide"><div class="card-h"><div><h2>Daily energy</h2><p class="sub" id="cEnergySub">Active + resting energy burned, with the food you logged</p></div></div><div class="chart-box"><canvas id="cEnergy"></canvas></div></div>
       <div class="card"><div class="card-h"><div><h2>Steps</h2><p class="sub" id="cStepsSub"></p></div></div><div class="chart-box"><canvas id="cSteps"></canvas></div></div>
-      <div class="card"><div class="card-h"><div><h2 id="cWkTitle">Workout minutes</h2><p class="sub" id="cWkSub"></p></div></div><div class="chart-box"><canvas id="cWk"></canvas></div></div>
+      <div class="card"><div class="card-h"><div><h2>Workout minutes</h2><p class="sub" id="cWkSub"></p></div></div><div class="chart-box"><canvas id="cWk"></canvas></div></div>
     </div>
     <div class="cols" style="margin-top:14px">
       <div class="card"><div class="card-h"><div><h2>Workouts</h2><p class="sub" id="wkListSub"></p></div></div><div class="scroll" id="wkList"></div><div class="more-row" id="wkMore"></div></div>
@@ -835,20 +835,20 @@ function renderActKpis(box, n) {
   const days = A().days, latest = days.length ? days[days.length - 1] : null;
   const prior = actDays(8, true), isToday = latest && latest.day === A().today;
   const lab = isToday ? 'today' : latest ? fday(latest.day) : '';
-  const kp = (l, v, u, d) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div><div class="d">${d}</div></div>`;
+  const kp = (l, v, u, d, key) => `<div class="kpi"><div class="l" data-info="k:${key}">${l}</div><div class="v">${v}<small>${u}</small></div><div class="d">${d}</div></div>`;
   const out = [];
-  if (latest && latest.active_kcal != null) out.push(kp(`Active energy ${lab}`, int(latest.active_kcal), 'kcal', vsAvg(latest.active_kcal, mean(prior.map(d => d.active_kcal).filter(v => v != null)), '')));
-  if (latest && latest.steps != null) out.push(kp(`Steps ${lab}`, int(latest.steps), '', vsAvg(latest.steps, mean(prior.map(d => d.steps).filter(v => v != null)), '')));
+  if (latest && latest.active_kcal != null) out.push(kp(`Active energy ${lab}`, int(latest.active_kcal), 'kcal', vsAvg(latest.active_kcal, mean(prior.map(d => d.active_kcal).filter(v => v != null)), ''), 'Active energy'));
+  if (latest && latest.steps != null) out.push(kp(`Steps ${lab}`, int(latest.steps), '', vsAvg(latest.steps, mean(prior.map(d => d.steps).filter(v => v != null)), ''), 'Steps'));
   if (n) {
     const ws = wkIn(n), mins = ws.reduce((s, w) => s + (w.minutes || 0), 0), kc = ws.reduce((s, w) => s + (w.kcal || 0), 0);
-    out.push(kp(`Workouts · ${n} days`, ws.length, '', `<span class="t2">${hm(mins)} · ${int(kc)} kcal</span>`));
+    out.push(kp(`Workouts · ${n} days`, ws.length, '', `<span class="t2">${hm(mins)} · ${int(kc)} kcal</span>`, 'Workouts'));
     const mb = measuredBurn(Math.min(n, 30));
     if (mb) {
       const est = S.nutrition && S.nutrition.maintenance;
-      out.push(kp('Avg daily burn', int(mb.avg), 'kcal', est ? `<span class="t2">estimate ${est} · ${sgn((mb.avg / est - 1) * 100, 0)}%</span>` : `<span class="t2">${mb.n} full days</span>`));
+      out.push(kp('Avg daily burn', int(mb.avg), 'kcal', est ? `<span class="t2">estimate ${est} · ${sgn((mb.avg / est - 1) * 100, 0)}%</span>` : `<span class="t2">${mb.n} full days</span>`, 'Avg daily burn'));
     }
     const bal = actDays(n, true).filter(d => burnOf(d) != null && intakeOf(d) != null).map(d => intakeOf(d) - burnOf(d));
-    if (bal.length >= 3) { const b = mean(bal); out.push(kp('Avg energy balance', sgn(b, 0), 'kcal', `<span class="t2">eaten − burned · ${bal.length} days logged</span>`)); }
+    if (bal.length >= 3) { const b = mean(bal); out.push(kp('Avg energy balance', sgn(b, 0), 'kcal', `<span class="t2">eaten − burned · ${bal.length} days logged</span>`, 'Avg energy balance')); }
   }
   box.innerHTML = out.join('') || '<div class="muted">No daily totals yet.</div>';
 }
@@ -903,8 +903,7 @@ function renderActivity() {
   else { for (let i = n - 1; i >= 0; i--) buckets.set(monday(keyAgo(i)), 0); }
   ws.forEach(w => { const k = perDay ? dayKey(new Date(w.ts * 1000)) : monday(dayKey(new Date(w.ts * 1000))); if (buckets.has(k) || !perDay) buckets.set(k, (buckets.get(k) || 0) + (w.minutes || 0)); });
   const bk = [...buckets.keys()].sort();
-  $('cWkTitle').textContent = perDay ? 'Workout minutes per day' : 'Workout minutes per week';
-  $('cWkSub').textContent = perDay ? '' : 'Weeks start on Monday';
+  $('cWkSub').textContent = perDay ? 'Per day' : 'Per week, weeks start on Monday';
   mkBars('cWk', perDay ? bk : bk.map(k => 'Wk ' + fday(k)), [{ label: 'Minutes', data: bk.map(k => buckets.get(k)), backgroundColor: css('--z2'), borderRadius: 3 }], { unit: ' min' });
   renderWorkouts(ws);
 }
@@ -1067,6 +1066,18 @@ const INFO = {
   'n:Protein per kg': 'Today\'s protein ÷ your body weight, against your target g/kg (1.2 maintain, 1.6 lose or gain, +0.4 high-protein style, +0.2 low-carb, +0.2 from age 60). Green at 100%, amber from 70%.',
   'n:Fibre density': 'Fibre grams ÷ calories eaten × 1000, against 14 g per 1000 kcal (IOM). Shows food quality regardless of how much you ate. Green at 14 or more.',
   'n:7-day average': 'Average calories per logged day over the last 7 days vs your daily target. Days with no saved meals are not counted.',
+  'h:Activity': 'Totals the iPhone app syncs from Apple Health, from all sources (Apple Watch, iPhone, other apps); Health removes overlap between devices. Energy is in kcal. Today is still in progress, so averages use completed days only. Figures are only as complete as what your devices recorded.',
+  'h:Daily energy': 'Bars: active energy (movement and exercise) + resting energy (what your body burns at rest, Apple\'s estimate from your profile) = total burn for the day. Line: food logged that day (meals saved on this Mac + nutrition other Health apps recorded). Today\'s bar is partial.',
+  'h:Steps': 'Daily step count from all sources in Apple Health. The dashed line is the average over completed days in the period (today excluded).',
+  'h:Workout minutes': 'Sum of workout durations (end − start) per day for 7 and 30 days, per week (starting Monday) for 90 days and a year.',
+  'h:Workouts': 'Individual workouts synced from Apple Health. Time = end − start. Energy and distance are as recorded by the watch or app and blank if it recorded none. Types are Apple\'s workout categories.',
+  'h:By type': 'Workouts in the selected period grouped by type. Percent = the type\'s minutes ÷ all workout minutes. Distance is summed where it was recorded.',
+  'k:Active energy': 'Calories burned through movement and exercise (Apple "Active Energy"), summed for the day from all sources. Shows today, or the latest synced day. "vs 7-day avg" compares with the average of the previous 7 completed days.',
+  'k:Steps': 'Step count for the day from all sources in Apple Health, compared with the average of the previous 7 completed days.',
+  'k:Workouts': 'Workouts recorded in Apple Health in the selected period. Below: their total time and the energy Health attributes to them. That energy is already part of active energy, so do not add the two.',
+  'k:Avg daily burn': 'Active + resting energy per day, averaged over completed days in the period (at most the last 30; needs 3 or more). Resting energy is Apple\'s estimate, not a measurement. "estimate" is the maintenance (TDEE) from your Nutrition plan (BMR × activity factor); the % is how far measured burn is from it.',
+  'k:Avg energy balance': 'Food logged − energy burned, averaged over completed days that have both (needs 3 or more). Food = meals saved on this Mac + nutrition other Health apps recorded. Negative = deficit. Days where you did not log everything you ate make the deficit look bigger than it is.',
+  'k:Last workout': 'The most recent workout synced from Apple Health: type, date, duration and energy.',
   'g:Weight': 'Your latest weight on a scale whose zones are the WHO BMI cut-offs converted to kg for your height (weight = BMI × height²). Marks: your optimal weight (BMI 22) and your target if different.',
   'g:Body Mass Index': 'Weight ÷ height². WHO zones: under 18.5 underweight, 18.5–25 healthy, 25–30 overweight, 30–35 obese I, 35+ obese II+. Mark at 22 = optimal.',
   'g:Body fat (estimate)': 'Deurenberg formula from BMI, age and sex: 1.20 × BMI + 0.23 × age − 10.8 (men) − 5.4. Zones are sex-specific categories; the note gives the healthy range for your age and sex (Gallagher 2000).',
@@ -1081,7 +1092,7 @@ function decorateInfo() {
     if (el.querySelector('.info')) return;
     const tn = [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
     if (!tn) return;
-    const text = INFO[pre + tn.textContent.trim()]; if (!text) return;
+    const text = INFO[el.dataset.info || pre + tn.textContent.trim()]; if (!text) return;
     const wrap = document.createElement('span'); wrap.className = 'lt';
     const b = document.createElement('button'); b.type = 'button'; b.className = 'info'; b.textContent = 'i';
     b.setAttribute('aria-label', 'About ' + tn.textContent.trim()); b.setAttribute('aria-expanded', 'false');
