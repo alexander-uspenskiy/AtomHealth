@@ -7,6 +7,9 @@ import Observation
 @MainActor @Observable
 final class AppModel {
     enum Phase { case unpaired, paired }
+    enum Tab { case overview, chat, sync }
+    /// The selected tab lives here so any screen can switch to another (back from Chat, "Ask the coach" on Overview).
+    var tab: Tab = .overview
 
     var phase: Phase = .unpaired
     var status = "Not paired"

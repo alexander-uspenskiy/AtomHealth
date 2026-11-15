@@ -3,8 +3,6 @@ import SwiftUI
 struct ContentView: View {
     @State private var model = AppModel()
     @State private var code = ""
-    @State private var tab = Tab.overview
-    enum Tab { case overview, chat, sync }
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -18,10 +16,10 @@ struct ContentView: View {
                     .navigationTitle("Atom Health")
                 }
             } else {
-                TabView(selection: $tab) {
-                    OverviewView(model: model).tabItem { Label("Overview", systemImage: "heart.text.square") }.tag(Tab.overview)
+                TabView(selection: Binding(get: { model.tab }, set: { model.tab = $0 })) {
+                    OverviewView(model: model).tabItem { Label("Overview", systemImage: "heart.text.square") }.tag(AppModel.Tab.overview)
                     ChatView(model: model).tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
-                        .badge(tab == .chat ? 0 : model.chat.unread).tag(Tab.chat)
+                        .badge(model.tab == .chat ? 0 : model.chat.unread).tag(AppModel.Tab.chat)
                     NavigationStack {
                         Form {
                             synced
@@ -29,7 +27,7 @@ struct ContentView: View {
                         }
                         .navigationTitle("Sync")
                     }
-                    .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }.tag(Tab.sync)
+                    .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }.tag(AppModel.Tab.sync)
                 }
                 .tint(Theme.accent)
             }

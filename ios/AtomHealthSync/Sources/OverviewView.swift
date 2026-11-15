@@ -96,6 +96,10 @@ struct OverviewView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             ForEach(Array(items.enumerated()), id: \.offset) { _, i in adviceView(i) }
+            Button { model.tab = .chat } label: {
+                Label("Ask the coach", systemImage: "bubble.left.and.bubble.right.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).tint(Theme.accent)
         }
     }
 

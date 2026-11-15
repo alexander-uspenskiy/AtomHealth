@@ -67,6 +67,10 @@ struct ChatView: View {
             .overlay(alignment: .top) { toastView }
             .navigationTitle("Coach").navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { focused = false; model.tab = .overview } label: { Label("Overview", systemImage: "chevron.left") }
+                        .accessibilityLabel("Back to Overview")
+                }
                 ToolbarItem(placement: .principal) { header }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
