@@ -6,12 +6,29 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationStack {
-            Form {
-                if model.phase == .unpaired { pairing } else { synced }
-                if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
+        Group {
+            if model.phase == .unpaired {
+                NavigationStack {
+                    Form {
+                        pairing
+                        if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
+                    }
+                    .navigationTitle("AtomHealth Sync")
+                }
+            } else {
+                TabView {
+                    OverviewView(model: model).tabItem { Label("Overview", systemImage: "heart.text.square") }
+                    NavigationStack {
+                        Form {
+                            synced
+                            if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
+                        }
+                        .navigationTitle("Sync")
+                    }
+                    .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
+                }
+                .tint(Theme.accent)
             }
-            .navigationTitle("AtomHealth Sync")
         }
         .task { await model.start() }
         .onChange(of: scenePhase) { _, p in if p == .active { Task { await model.syncNow() } } }

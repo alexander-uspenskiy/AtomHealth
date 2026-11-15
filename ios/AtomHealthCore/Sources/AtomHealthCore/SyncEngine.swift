@@ -43,9 +43,9 @@ public struct SyncReport: Equatable, Sendable {
 /// - per-entity version, last-writer-wins: an envelope is applied only if its version is newer than any seen
 /// - deletes are applied like upserts (tombstones) and versioned
 /// - the pull cursor advances only after a page has been applied; local changes leave the outbox only after a successful push
-/// - the phone accepts weight and meal (the Mac's outbound types); anything else is skipped
+/// - the phone accepts weight, meal and dashboard (the Mac's outbound types); anything else is skipped
 public actor SyncEngine {
-    public static let inboundTypes: Set<EnvelopeType> = [.weight, .meal]
+    public static let inboundTypes: Set<EnvelopeType> = [.weight, .meal, .dashboard]
     static let pullPage = 100
 
     let deviceID: String

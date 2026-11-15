@@ -54,7 +54,7 @@ public enum HealthWrite: Equatable, Sendable {
     public enum Invalid: Error, Equatable { case field(String), unsupported }
 
     public static func decode(_ env: Envelope, now: Date = Date()) throws -> HealthWrite {
-        guard SyncEngine.inboundTypes.contains(env.type) else { throw Invalid.unsupported }
+        guard env.type == .weight || env.type == .meal else { throw Invalid.unsupported }
         if env.op == .delete { return .remove(type: env.type, id: env.id, version: env.version) }
         guard let d = env.data else { throw Invalid.field("data") }
         func num(_ k: String, _ lo: Double, _ hi: Double, required: Bool = true) throws -> Double? {

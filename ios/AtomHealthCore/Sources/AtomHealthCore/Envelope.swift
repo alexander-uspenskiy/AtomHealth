@@ -35,7 +35,7 @@ public enum JSONValue: Codable, Equatable, Sendable {
 }
 
 public enum EnvelopeType: String, Codable, Sendable {
-    case weight, meal
+    case weight, meal, dashboard
     case activityDay = "activity_day", nutritionDay = "nutrition_day", workout
 }
 

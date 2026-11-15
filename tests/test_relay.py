@@ -229,3 +229,45 @@ def test_pairing_code_roundtrips_and_is_url_safe():
     assert code.startswith("ahpair1:") and "=" not in code and "+" not in code and "/" not in code
     body = json.loads(relay.b64d(code[len("ahpair1:"):] + "=" * (-len(code[len("ahpair1:"):]) % 4)))
     assert body == {"v": 1, "u": "https://r.example", "d": "dev-phone", "t": "dev-phone.SECRET", "k": relay.b64e(KEY)}
+
+
+# ---------------------------------------------------------------------------- dashboard snapshot
+def test_dashboard_snapshot_is_pushed_only_when_it_changes():
+    fake, box = FakeRelay(), {"d": {"readings": [{"ts": 1, "weight": 80.0}]}}
+
+    async def go():
+        async with TestServer(fake.app()) as srv:
+            appmod.kv_set("relay", {"url": str(srv.make_url("")).rstrip("/"), "device_id": "mac1"})
+            agent = relay.RelayAgent(db, appmod.kv_get, appmod.kv_set, snapshot=lambda: box["d"],
+                                     secret_store=MemSecrets(token="mac1.secret", key=relay.b64e(KEY)))
+            a = await agent.cycle()
+            b = await agent.cycle()                     # same content: nothing is sent
+            box["d"] = {"readings": [{"ts": 2, "weight": 79.5}]}
+            c = await agent.cycle()
+            return a, b, c
+    a, b, c = asyncio.run(go())
+    assert (a["pushed"], b["pushed"], c["pushed"]) == (1, 0, 1)
+    envs = [relay.decrypt(KEY, r["device_id"], r["record_id"], r["nonce"], r["ciphertext"]) for r in fake.records]
+    assert [e["type"] for e in envs] == ["dashboard", "dashboard"] and {e["id"] for e in envs} == {"overview"}
+    assert envs[1]["version"] > envs[0]["version"] and envs[1]["data"]["readings"][0]["weight"] == 79.5
+    assert "generated_at" in envs[0]["data"]
+
+
+def test_dashboard_snapshot_content_and_size():
+    appmod.add_reading(80.0, time.time() - 86400, source="scale")
+    appmod.add_reading(79.4, time.time(), source="scale")
+    snap = appmod.dashboard_snapshot()
+    raw = json.dumps(snap)
+    assert len(raw) <= appmod.SNAPSHOT_MAX_BYTES and len(snap["readings"]) == 2 and snap["first"]["weight"] == 80.0
+    assert {"healthy_range", "optimal", "ref", "nutrition", "meals", "advice"} <= snap.keys()
+    assert not {"history", "export", "settings", "live"} & snap.keys()       # only what the Overview tab needs
+    assert set(snap["ref"]) <= {"bmi_zones", "fat_zones", "ffmi_zones", "water_range"}
+    assert "special_requirements" not in raw and "health_token" not in raw and "photos" not in raw
+    for i in range(400):                                 # a long history: only the recent part is sent
+        appmod.add_reading(70 + (i % 9) / 3, time.time() - (i + 2) * 3600 * 6, source="scale")
+    big = appmod.dashboard_snapshot()
+    latest = big["readings"][-1]["ts"]
+    assert len(json.dumps(big, separators=(",", ":"))) <= appmod.SNAPSHOT_MAX_BYTES
+    assert len(big["readings"]) <= appmod.SNAPSHOT_MAX_READINGS
+    assert all(r["ts"] >= latest - appmod.SNAPSHOT_DAYS * 86400 for r in big["readings"])
+    assert big["first"]["ts"] < big["readings"][0]["ts"]  # the very first reading still anchors the goal progress

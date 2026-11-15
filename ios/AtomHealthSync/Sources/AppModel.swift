@@ -15,11 +15,14 @@ final class AppModel {
     var pending = 0
     var error: String?
     var busy = false
+    /// The Mac's latest Overview numbers; kept on disk so the tab opens instantly and works offline.
+    var dashboard: DashboardSnapshot?
 
     private var config: (url: String, deviceID: String, token: String, key: Data)?
     private let store: JSONFileStateStore
     private let reader: HealthKitReader
-    private let sink = HealthKitSink()
+    private let dashboardStore: DashboardStore
+    private let sink: RoutingSink
     private var debounce: Task<Void, Never>?
 
     init() {
@@ -27,6 +30,8 @@ final class AppModel {
             ?? FileManager.default.temporaryDirectory
         store = JSONFileStateStore(url: dir.appendingPathComponent("sync-state.json"))
         reader = HealthKitReader(state: store)
+        dashboardStore = DashboardStore(url: dir.appendingPathComponent("dashboard.json"))
+        sink = RoutingSink(health: HealthKitSink(), dashboard: dashboardStore)
         if let u = Keychain.get("url").flatMap({ String(data: $0, encoding: .utf8) }),
            let d = Keychain.get("device").flatMap({ String(data: $0, encoding: .utf8) }),
            let t = Keychain.get("token").flatMap({ String(data: $0, encoding: .utf8) }),
@@ -51,7 +56,8 @@ final class AppModel {
 
     func unpair() {
         ["url", "device", "token", "key"].forEach(Keychain.delete)
-        config = nil; phase = .unpaired; status = "Not paired"; lastReport = nil; lastSync = nil
+        config = nil; phase = .unpaired; status = "Not paired"; lastReport = nil; lastSync = nil; dashboard = nil
+        Task { await dashboardStore.clear() }
     }
 
     func start() async {
@@ -60,6 +66,7 @@ final class AppModel {
         if config == nil, let code = UserDefaults.standard.string(forKey: "debugPairingCode") { pair(code: code) }
         #endif
         guard config != nil else { return }
+        dashboard = await dashboardStore.load()
         do {
             try await reader.requestAuthorization()
             reader.onChange = { [weak self] in Task { @MainActor in self?.scheduleSync() } }
@@ -86,5 +93,6 @@ final class AppModel {
             error = e.message; status = e.status == 401 ? "Device revoked: pair again" : "Sync failed"
         } catch { self.error = error.localizedDescription; status = "Sync failed" }
         pending = await store.pending().count
+        dashboard = await dashboardStore.load()
     }
 }

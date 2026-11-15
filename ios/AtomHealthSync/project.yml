@@ -41,3 +41,4 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.alex.atomhealthsync
         GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

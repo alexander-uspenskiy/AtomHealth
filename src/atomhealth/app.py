@@ -238,6 +238,43 @@ async def state(request):
     })
 
 
+SNAPSHOT_READING_FIELDS = ("ts", "weight", "bmi", "fat_pct", "fat_kg", "lean_kg", "muscle_kg", "water_pct", "tbw_kg",
+                           "ffmi", "nffmi", "fmi")
+SNAPSHOT_NUTRITION_FIELDS = ("goal", "kcal", "weight", "protein_per_kg", "protein_basis_kg", "macros", "limits")
+SNAPSHOT_MAX_BYTES = 24_000   # far below the relay's ~64 KB record cap: only the Overview tab is synced, to keep it small
+SNAPSHOT_DAYS = 60            # enough for the 30-day pace and the sparklines; older history stays on the Mac
+SNAPSHOT_MAX_READINGS = 60
+
+
+def dashboard_snapshot(now=None):
+    """What the iPhone's Overview tab shows, and nothing else (no Trends, history or plan details), end-to-end
+    encrypted by the relay agent. Derived by the same functions as /api/state, so the phone cannot disagree with this Mac.
+    Left out on purpose: live scale state, the Shortcut token, photos and the free-text health notes in the profile.
+    """
+    now = now or time.time()
+    prof = profile()
+    rows = db.execute("SELECT * FROM readings ORDER BY ts").fetchall()
+    rd = [{k: d.get(k) for k in SNAPSHOT_READING_FIELDS} for d in (reading_dict(r, prof) for r in rows)]
+    ref = bodycomp.reference(prof)
+    nut = bodycomp.nutrition(prof, rows[-1]["weight"] if rows else None) or {}
+    meals = [{"ts": m["ts"], "type": m["type"], "status": m["status"], "kcal": m["kcal"], "protein_g": m["protein_g"],
+              "carbs_g": m["carbs_g"], "fat_g": m["fat_g"], "fiber_g": m["fiber_g"],
+              "items": [i["name"] for i in m["items"]][:3]}
+             for m in meal_history() if m["ts"] >= now - 7 * 86400]
+    snap = {"profile": {k: prof.get(k) for k in ("height_cm", "age", "sex", "target_weight", "target_fat_pct", "target_date")},
+            "healthy_range": bodycomp.healthy_range(prof), "optimal": bodycomp.optimal(prof),
+            "ref": {k: ref[k] for k in ("bmi_zones", "fat_zones", "ffmi_zones", "water_range") if k in ref},
+            "nutrition": {k: nut.get(k) for k in SNAPSHOT_NUTRITION_FIELDS}, "first": rd[0] if rd else None,
+            "meals": meals, "advice": advisor.feed(db)}
+    recent = [r for r in rd if r["ts"] >= (rd[-1]["ts"] if rd else 0) - SNAPSHOT_DAYS * 86400]
+    keep = min(SNAPSHOT_MAX_READINGS, len(recent))
+    while True:
+        snap["readings"] = recent[-keep:] if keep else []
+        if keep <= 10 or len(json.dumps(snap, separators=(",", ":"))) <= SNAPSHOT_MAX_BYTES:
+            return snap
+        keep = int(keep * 0.8)
+
+
 def meal_history(limit=200):
     """Logged meals (newest first, discarded ones left out) with their items and photo count."""
     out = []
@@ -735,7 +772,7 @@ def make_app(lan, no_ble):
     app = web.Application()
     app["lan"], app["no_ble"] = lan, no_ble
     config.set_llm_overrides(kv_get("ai", {}))
-    app["relay"] = relaymod.RelayAgent(db, kv_get, kv_set)
+    app["relay"] = relaymod.RelayAgent(db, kv_get, kv_set, snapshot=dashboard_snapshot)
     app["bot"] = tgbot.TelegramBot(db, cfg=telegram_cfg, target_kcal=target_kcal, latest_weight=latest_weight,
                                    kv_get=kv_get, kv_set=kv_set, plan=nutrition_plan,
                                    context=advice_snapshot, notify=lambda: publish({"type": "advice"}))

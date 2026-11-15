@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import base64
 import getpass
+import hashlib
 import json
 import os
 import secrets
@@ -162,8 +163,9 @@ class RelayClient:
 
 # ---------------------------------------------------------------------------- agent
 class RelayAgent:
-    def __init__(self, db, kv_get, kv_set, secret_store=None, interval=300, session=None):
+    def __init__(self, db, kv_get, kv_set, secret_store=None, interval=300, session=None, snapshot=None):
         self.db, self.kv_get, self.kv_set = db, kv_get, kv_set
+        self.snapshot = snapshot  # callable -> dict shown on the phone's dashboard; None disables it
         self.secrets = secret_store or SecretStore()
         self.interval = interval
         self._session = session
@@ -205,6 +207,7 @@ class RelayAgent:
             try:
                 pulled = await self._pull(client, key)
                 pushed = await self._push(client, device_id, key)
+                pushed += await self._push_snapshot(client, device_id, key)
             finally:
                 await client.close()
         self.state.update(last_ok=int(time.time()), last_error=None)
@@ -253,6 +256,25 @@ class RelayAgent:
             after = nxt
         self.state["pushed"] += total
         return total
+
+    async def _push_snapshot(self, client, device_id, key):
+        """One record, id "overview", replaced whenever the dashboard content changes (never when it is the same)."""
+        if self.snapshot is None:
+            return 0
+        data = self.snapshot()
+        digest = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if self.kv_get("relay_dash_hash") == digest:
+            return 0
+        now = int(time.time())
+        version = max(now * 1000, self.kv_get("relay_dash_version", 0) + 1)
+        env = {"v": sync.ENVELOPE_VERSION, "type": "dashboard", "op": "upsert", "id": "overview", "version": version,
+               "updated_at": now, "data": {**data, "generated_at": now}}
+        await client.push([encrypt(key, device_id, new_record_id(), env)])
+        self.kv_set("relay_dash_version", version)  # only after the relay accepted it
+        self.kv_set("relay_dash_hash", digest)
+        sync.log(self.db, "push", "dashboard", 1, "ok")
+        self.state["pushed"] += 1
+        return 1
 
     async def run(self):
         """Background loop: sync on a timer, sooner when local changes appear, back off on errors."""
