@@ -34,6 +34,7 @@ targets:
       properties:
         CFBundleDisplayName: AtomHealth Sync
         UILaunchScreen: {}
+        NSCameraUsageDescription: AtomHealth Sync takes meal photos for the chat with your AtomHealth coach. Photos are resized, then sent end-to-end encrypted to your Mac.
         NSHealthShareUsageDescription: AtomHealth Sync reads your weight, workouts, activity and nutrition from Apple Health so your AtomHealth Mac app can use them.
         NSHealthUpdateUsageDescription: AtomHealth Sync writes weights and meals logged in AtomHealth into Apple Health.
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

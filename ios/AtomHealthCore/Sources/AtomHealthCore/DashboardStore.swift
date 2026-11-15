@@ -24,12 +24,20 @@ public actor DashboardStore {
     public func clear() { try? FileManager.default.removeItem(at: url) }
 }
 
-/// Sends dashboard envelopes to the `DashboardStore` and everything else (weights, meals) to Apple Health.
+/// Sends dashboard envelopes to the `DashboardStore`, chat to the `ChatStore`, and everything else (weights, meals)
+/// to Apple Health.
 public struct RoutingSink: InboundSink {
     let health: InboundSink
     let dashboard: DashboardStore
-    public init(health: InboundSink, dashboard: DashboardStore) { self.health = health; self.dashboard = dashboard }
+    let chat: ChatStore
+    public init(health: InboundSink, dashboard: DashboardStore, chat: ChatStore) {
+        self.health = health; self.dashboard = dashboard; self.chat = chat
+    }
     public func apply(_ env: Envelope) async throws {
-        if env.type == .dashboard { await dashboard.apply(env) } else { try await health.apply(env) }
+        switch env.type {
+        case .dashboard: await dashboard.apply(env)
+        case .chatOut: await chat.apply(env)
+        default: try await health.apply(env)
+        }
     }
 }

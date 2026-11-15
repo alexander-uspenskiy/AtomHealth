@@ -21,7 +21,7 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
-from . import activity, advisor, bodycomp, bot as tgbot, config, food, relay as relaymod, sync
+from . import activity, advisor, bodycomp, bot as tgbot, config, food, phonechat, relay as relaymod, sync
 from .llm import LLMError
 
 PKG_DIR = Path(__file__).resolve().parent            # src/atomhealth
@@ -554,6 +554,19 @@ def telegram_cfg():
             "summary_time": c.get("summary_time") if TIME_RE.match(c.get("summary_time") or "") else "21:00"}
 
 
+def phone_cfg():
+    """The phone's Chat tab is the same bot as Telegram; on only once the phone is paired with the relay."""
+    c = telegram_cfg()
+    return {"enabled": app_relay_configured(), "token": "phone-chat-local", "allowed_ids": {phonechat.PHONE_UID},
+            "auto_save": c["auto_save"], "session_minutes": c["session_minutes"],
+            "daily_summary": False,     # Telegram already sends it; the phone can ask with /today or /advice
+            "summary_time": c["summary_time"]}
+
+
+def app_relay_configured():
+    return relaymod.RelayAgent(db, kv_get, kv_set).configured
+
+
 def settings_view(request):
     c, bot = telegram_cfg(), request.app["bot"]
     ai = config.llm_settings()
@@ -750,11 +763,27 @@ async def daily_revalidate_task():
             print(f"daily advice revalidation error: {e}", flush=True)
 
 
+async def ai_probe_task(chat):
+    """Keeps `chat.ai_ok` fresh (is the AI backend reachable?) so a phone ping can answer without waiting."""
+    while True:
+        try:
+            timeout = aiohttp.ClientTimeout(total=3)
+            async with aiohttp.ClientSession(timeout=timeout) as http, http.get(config.llm_settings()["base_url"] + "/models") as r:
+                chat.ai_ok = r.status < 500        # a 404 on /models still means the server is up
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            chat.ai_ok = False
+        await asyncio.sleep(60)
+
+
 async def on_start(app):
     await app["bot"].apply()
+    await app["phonebot"].apply()
     app["revalidate"] = asyncio.create_task(daily_revalidate_task())
     if app["relay"].configured:  # paired with the Cloudflare relay (python -m atomhealth.relay pair)
         app["relay_task"] = asyncio.create_task(app["relay"].run())
+        app["ai_probe"] = asyncio.create_task(ai_probe_task(app["relay"].chat))
     if not app["no_ble"]:
         app["ble"] = asyncio.create_task(ble_task())
     else:
@@ -765,14 +794,22 @@ async def on_stop(app):
     app["revalidate"].cancel()
     if "relay_task" in app:
         app["relay_task"].cancel()
+        app["ai_probe"].cancel()
     await app["bot"].stop()
+    await app["phonebot"].stop()
 
 
 def make_app(lan, no_ble):
     app = web.Application()
     app["lan"], app["no_ble"] = lan, no_ble
     config.set_llm_overrides(kv_get("ai", {}))
-    app["relay"] = relaymod.RelayAgent(db, kv_get, kv_set, snapshot=dashboard_snapshot)
+    chat = phonechat.PhoneChat(lambda k, d=None: kv_get("pc_" + k, d), lambda k, v: kv_set("pc_" + k, v))
+    app["relay"] = relaymod.RelayAgent(db, kv_get, kv_set, snapshot=dashboard_snapshot, chat=chat)
+    app["phonebot"] = tgbot.TelegramBot(db, cfg=phone_cfg, target_kcal=target_kcal, latest_weight=latest_weight,
+                                        kv_get=lambda k, d=None: kv_get("pc_" + k, d), kv_set=lambda k, v: kv_set("pc_" + k, v),
+                                        plan=nutrition_plan, context=advice_snapshot,
+                                        notify=lambda: publish({"type": "advice"}),
+                                        api_factory=lambda token, base: phonechat.PhoneApi(chat), source="phone")
     app["bot"] = tgbot.TelegramBot(db, cfg=telegram_cfg, target_kcal=target_kcal, latest_weight=latest_weight,
                                    kv_get=kv_get, kv_set=kv_set, plan=nutrition_plan,
                                    context=advice_snapshot, notify=lambda: publish({"type": "advice"}))

@@ -43,9 +43,9 @@ public struct SyncReport: Equatable, Sendable {
 /// - per-entity version, last-writer-wins: an envelope is applied only if its version is newer than any seen
 /// - deletes are applied like upserts (tombstones) and versioned
 /// - the pull cursor advances only after a page has been applied; local changes leave the outbox only after a successful push
-/// - the phone accepts weight, meal and dashboard (the Mac's outbound types); anything else is skipped
+/// - the phone accepts weight, meal, dashboard and chat_out (the Mac's outbound types); anything else is skipped
 public actor SyncEngine {
-    public static let inboundTypes: Set<EnvelopeType> = [.weight, .meal, .dashboard]
+    public static let inboundTypes: Set<EnvelopeType> = [.weight, .meal, .dashboard, .chatOut]
     static let pullPage = 100
 
     let deviceID: String
@@ -103,7 +103,8 @@ public actor SyncEngine {
         for c in changes {
             let k = "\(c.type.rawValue)|\(c.id)"
             let prev: Int?
-            if let v = versions[k] { prev = v } else { prev = await store.version(of: c.type, id: c.id) }
+            // chat_in ids are unique per message, so there is no version history to keep (or to grow forever)
+            if c.type == .chatIn { prev = nil } else if let v = versions[k] { prev = v } else { prev = await store.version(of: c.type, id: c.id) }
             let version = max(nowMs, (prev ?? -1) + 1)
             versions[k] = version
             let env = Envelope(type: c.type, op: c.op, id: c.id, version: version,
@@ -112,7 +113,7 @@ public actor SyncEngine {
             applied.append((c, version))
         }
         try await relay.push(sealed)
-        for (c, v) in applied { await store.setVersion(v, of: c.type, id: c.id) }
+        for (c, v) in applied where c.type != .chatIn { await store.setVersion(v, of: c.type, id: c.id) }
         await store.removePending(count: changes.count)
         report.pushed += changes.count
     }

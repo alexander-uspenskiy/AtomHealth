@@ -40,6 +40,11 @@ public actor JSONFileStateStore: SyncStateStore, BlobStore {
         state.queue.removeAll { $0.type == c.type && $0.id == c.id }
         state.queue.append(c); save()
     }
+    /// Several changes with one disk write (a photo is many chunks).
+    public func enqueue(contentsOf changes: [LocalChange]) {
+        for c in changes { state.queue.removeAll { $0.type == c.type && $0.id == c.id } }
+        state.queue.append(contentsOf: changes); save()
+    }
     public func blob(_ key: String) -> Data? { state.blobs[key] }
     public func setBlob(_ data: Data?, for key: String) { state.blobs[key] = data; save() }
 }

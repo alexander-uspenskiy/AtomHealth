@@ -150,11 +150,15 @@ enum Fixture {
             func types() -> [EnvelopeType] { seen } }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("dash-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-        let spy = Spy(), sink = RoutingSink(health: spy, dashboard: DashboardStore(url: url))
+        let chat = ChatStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("chat-\(UUID().uuidString)"))
+        let spy = Spy(), sink = RoutingSink(health: spy, dashboard: DashboardStore(url: url), chat: chat)
         let good = try JSONDecoder().decode(JSONValue.self, from: Fixture.json())
         try await sink.apply(Envelope(type: .dashboard, op: .upsert, id: "overview", version: 1, updatedAt: 0, data: good))
         try await sink.apply(Envelope(type: .weight, op: .delete, id: "w", version: 1, updatedAt: 0, data: nil))
-        #expect(await spy.types() == [.weight])
+        try await sink.apply(Envelope(type: .chatOut, op: .upsert, id: "m1", version: 1, updatedAt: 5,
+                                      data: .object(["mid": .number(1), "text": .string("hi")])))
+        #expect(await spy.types() == [.weight])                     // chat never reaches HealthKit
+        #expect(await chat.snapshot().messages.map(\.text) == ["hi"])
         #expect(SyncEngine.inboundTypes.contains(.dashboard))
     }
 }

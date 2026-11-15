@@ -27,7 +27,7 @@ from . import sync
 KEYRING_SERVICE = "atomhealth-relay"
 AAD_PREFIX = b"atomhealth-v1|"
 PUSH_BATCH = 50          # relay limit
-PULL_PAGE = 100
+PULL_PAGE = 20           # a page of photo chunks stays ~1.4 MB: keeps the Worker inside its 10 ms CPU budget
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
 
@@ -163,8 +163,14 @@ class RelayClient:
 
 # ---------------------------------------------------------------------------- agent
 class RelayAgent:
-    def __init__(self, db, kv_get, kv_set, secret_store=None, interval=300, session=None, snapshot=None):
+    def __init__(self, db, kv_get, kv_set, secret_store=None, interval=300, session=None, snapshot=None,
+                 chat=None, chat_interval=8):
         self.db, self.kv_get, self.kv_set = db, kv_get, kv_set
+        self.chat = chat                  # phonechat.PhoneChat: the phone's Chat tab; None disables it
+        self.chat_interval = chat_interval  # seconds between relay polls while chat is on (full cycle: `interval`)
+        self._wake = asyncio.Event()
+        if chat:
+            chat.on_out = self._wake.set
         self.snapshot = snapshot  # callable -> dict shown on the phone's dashboard; None disables it
         self.secrets = secret_store or SecretStore()
         self.interval = interval
@@ -196,8 +202,9 @@ class RelayAgent:
                 "cursor": self.kv_get("relay_cursor", 0), "pushed_seq": self.kv_get("relay_pushed_seq", 0),
                 "pending": max(0, sync.outbox_max(self.db) - self.kv_get("relay_pushed_seq", 0)), **self.state}
 
-    async def cycle(self):
-        """One pull + push. Raises RelayError on transport/auth problems (state is only advanced after success)."""
+    async def cycle(self, chat_only=False):
+        """One pull + push (chat_only: skip the dashboard snapshot and the health outbox, so a fast chat poll stays
+        cheap). Raises RelayError on transport/auth problems (state is only advanced after success)."""
         creds = self._creds()
         if creds is None:
             raise RelayError("relay is not configured (run: python -m atomhealth.relay pair)")
@@ -206,8 +213,10 @@ class RelayAgent:
             client = RelayClient(url, token, self._session)
             try:
                 pulled = await self._pull(client, key)
-                pushed = await self._push(client, device_id, key)
-                pushed += await self._push_snapshot(client, device_id, key)
+                pushed = await self._push_chat(client, device_id, key)
+                if not chat_only:
+                    pushed += await self._push(client, device_id, key)
+                    pushed += await self._push_snapshot(client, device_id, key)
             finally:
                 await client.close()
         self.state.update(last_ok=int(time.time()), last_error=None)
@@ -223,6 +232,12 @@ class RelayAgent:
                     envs.append(decrypt(key, rec["device_id"], rec["record_id"], rec["nonce"], rec["ciphertext"]))
                 except (CryptoError, KeyError):
                     bad += 1
+            chat = [e for e in envs if e.get("type") == "chat_in"]
+            if chat:
+                envs = [e for e in envs if e.get("type") != "chat_in"]
+                for e in chat:
+                    if self.chat:
+                        self.chat.ingest(e)
             if envs:
                 counts = sync.apply_batch(self.db, envs)
                 total += counts["applied"] + counts["merged"]
@@ -257,6 +272,21 @@ class RelayAgent:
         self.state["pushed"] += total
         return total
 
+    async def _push_chat(self, client, device_id, key):
+        """Bot replies for the phone. Taken from the queue first and put back if the relay refuses them."""
+        if not self.chat:
+            return 0
+        envs, total = self.chat.drain(), 0
+        try:
+            while envs:
+                batch = envs[:PUSH_BATCH]
+                await client.push([encrypt(key, device_id, new_record_id(), e) for e in batch])
+                envs, total = envs[PUSH_BATCH:], total + len(batch)
+        except BaseException:
+            self.chat.requeue(envs)
+            raise
+        return total
+
     async def _push_snapshot(self, client, device_id, key):
         """One record, id "overview", replaced whenever the dashboard content changes (never when it is the same)."""
         if self.snapshot is None:
@@ -277,12 +307,17 @@ class RelayAgent:
         return 1
 
     async def run(self):
-        """Background loop: sync on a timer, sooner when local changes appear, back off on errors."""
+        """Background loop: a full sync on a timer (sooner when local changes appear), chat-only polls in between
+        while the phone chat is on, back off on errors."""
+        last_full = 0.0
         while True:
+            full = not self.chat or time.monotonic() - last_full >= self.interval
             try:
-                await self.cycle()
+                await self.cycle(chat_only=not full)
+                if full:
+                    last_full = time.monotonic()
                 self._failures = 0
-                wait = self.interval
+                wait = self.chat_interval if self.chat else self.interval
             except RelayError as e:
                 self._failures += 1
                 self.state["last_error"] = str(e)
@@ -294,8 +329,15 @@ class RelayAgent:
                 wait = 300
             deadline = time.monotonic() + wait
             while time.monotonic() < deadline:
-                await asyncio.sleep(10)
+                try:
+                    await asyncio.wait_for(self._wake.wait(), 2 if self.chat else 10)
+                except asyncio.TimeoutError:
+                    pass
+                if self._wake.is_set():                  # the bot has an answer for the phone
+                    self._wake.clear()
+                    break
                 if self.configured and sync.outbox_max(self.db) > self.kv_get("relay_pushed_seq", 0):
+                    last_full = 0.0                       # local health changes: do a full cycle now
                     break
 
 

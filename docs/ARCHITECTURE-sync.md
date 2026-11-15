@@ -109,6 +109,36 @@ The outbox is only a dirty marker: the payload is built from the **current row**
 
 Meals are outbound-only; inbound `meal` envelopes are rejected as invalid.
 
+### 6.6 Phone chat (the app's Chat tab)
+The Chat tab is the Telegram bot's logic served over this same relay: `phonechat.PhoneApi` stands in for the Telegram API, so commands, plain-words routing, meal analysis, albums, Save/Discard buttons, in-place message edits and `/undo` work on the phone without a second copy of the logic. Meals created there are tagged `source='phone'`. The phone's chat is a second `TelegramBot` instance (offset/ids kept under `pc_` kv keys; no daily summary, Telegram already sends it). Contract (also in the `phonechat.py` docstring):
+
+| Direction | Type / id | Payload |
+|---|---|---|
+| phone → Mac | `chat_in` `t-<uuid>` | `{kind:"text", text}` a message or `/command` |
+| phone → Mac | `chat_in` `p-<photo>-<i>` | `{kind:"photo", photo_id, idx, n, b64}` one chunk (≤ 40 KB of JPEG) |
+| phone → Mac | `chat_in` `m-<uuid>` | `{kind:"message", text, photos:[photo_id…]}` sent after its chunks; >1 photo = an album |
+| phone → Mac | `chat_in` `c-<uuid>` | `{kind:"callback", data, msg_id}` a tap on an inline button |
+| phone → Mac | `chat_in` `g-<uuid>` | `{kind:"ping"}` "are you there?" (on opening the chat, then every ~40 s; every 5 min while unanswered) |
+| Mac → phone | `chat_out` `presence` | `{ts, ai}` the answer to a ping; `ai` = AI backend reachable (probed every 60 s; null = unknown) |
+| Mac → phone | `chat_out` `m<n>` | `{mid, text (Telegram-HTML subset), buttons:[[{text,data}]], ts, edited?}`; same id + higher version = edit |
+| Mac → phone | `chat_out` `typing` / `toast` | `{typing_until}` / `{toast}` ephemeral |
+
+- **Photos are resized on the phone** (`PhotoPrep`): longest side ≤ 1280 px, JPEG ≤ ~300 KB (quality 0.8 → 0.5, then smaller), EXIF rotation applied, **all metadata (GPS, camera, time) dropped**, never upscaled, transparent PNGs flattened on white. A 4 MB camera shot becomes ~150–300 KB = 4–8 chunks. The relay's record cap (~64 KB ciphertext) is why photos travel as chunks; the Mac reassembles by `photo_id`, drops incomplete photos after 15 min, and answers "a photo did not arrive completely" if one is missing. The relay keeps batch order, so chunks always precede their `message`.
+- **Header status** (`ChatStatus.derive`, unit-tested): *No connection* (relay unreachable) · *Checking your Mac…* · *Mac not responding* (no answer 25 s after a ping or message; the explanation line says it may be asleep) · *Waiting for the answer…* · *Working…* (bot typing) · *Online* / *Online · AI offline* (commands work, meal photos and coaching will fail). Pings add ≤ ~1.4 k requests/day if the tab stays open all day. The status depends on the clock, so the header redraws on a 2 s timer (SwiftUI does not redraw when nothing observable changes, and a dead Mac sends nothing).
+- **Latency:** the Mac polls the relay every 8 s (chat-only cycles; the full health/dashboard cycle stays on its 5 min timer) and pushes bot replies at once. The app polls every 4 s while the Chat tab is open (1.5 s while a reply is pending) and not at all in the background; there are no push notifications on a free Personal Team, so replies appear when the app is opened.
+- **Not kept on the Mac:** chat history lives on the phone (400 messages, photos in the app's protected storage). Bot replies queued while the relay is unreachable are retried from memory and lost if the Mac service restarts before the relay comes back.
+
+## 8a. Chat load on the free tier (estimates, Cloudflare limits checked 2026-11-15)
+Workers Free: 100,000 requests/day, **10 ms CPU per request**; D1 Free: 5 M rows read, 100 k rows written (index writes count), 5 GB.
+
+| Resource | Chat adds | Share of limit |
+|---|---|---|
+| Requests | Mac idle poll 10.8 k/day + phone open 4 s: up to 21.6 k/day + bursts ≈ 1 k | ≈ 15 % typical, ≈ 33 % if the tab is left open all day |
+| D1 rows written | heavy day ≈ 330 records × 3 (table + 2 indexes) + acks ≈ 1.3 k | ≈ 1.3 % |
+| D1 rows read | an idle poll reads 1 row (device lookup) | ≈ 0.2 % |
+| Storage | ~300 KB per photo, deleted after both devices ack, 30 days at most | negligible |
+| CPU per request | **not measured.** Photo records are ~70 KB each, so pushes are capped at ~300 KB per request and the Mac pulls 20 records per page (≤ 1.4 MB) to stay far from 10 ms. Check CPU time in the Workers dashboard after the first photo; fallback: smaller photos or Workers Paid ($5/mo) | open |
+
 ### 6.3 Versions, conflicts, deletes
 Per entity, `sync_versions(type, sync_id, version, live)` stores the last version. Outbound version = `max(now_ms, previous+1)`, persisted only after delivery succeeded (`mark_sent`), so a failed push is simply retried. Inbound envelopes with `version <= stored` are ignored (**last-writer-wins**); a delete stores a tombstone so an older upsert cannot resurrect the entity. Deleting a Health sample that was *merged* into a scale reading only removes the link.
 
@@ -165,4 +195,4 @@ npx wrangler tail              # live logs (relay logs no bodies)
 Rotate the admin code any time: `openssl rand -base64 36 | tr -d '\n=' | tr '+/' '-_' > .admin-code` then the `secret put` line. Existing device tokens keep working.
 
 ## 8. Limits & cost
-Free tier covers ~200–300 requests/day/device vs. ~100k/day allowed; D1 holds KBs. Check Cloudflare's current limits page — numbers here are from memory. Paid fallback: Workers Paid ($5/mo).
+Without chat the free tier covers ~200–300 requests/day/device vs. ~100k/day allowed; D1 holds KBs. With the phone chat see §8a. Paid fallback: Workers Paid ($5/mo).

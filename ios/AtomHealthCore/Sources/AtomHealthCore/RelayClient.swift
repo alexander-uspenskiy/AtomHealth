@@ -35,6 +35,7 @@ public struct URLSessionTransport: HTTPTransport {
 
 public struct RelayClient: Sendable {
     public static let pushBatch = 50
+    public static let pushBytes = 300_000   // a few photo chunks per request: keeps the Worker inside its 10 ms CPU budget
     let base: URL
     let token: String?
     let transport: HTTPTransport
@@ -72,11 +73,21 @@ public struct RelayClient: Sendable {
         catch { throw RelayError(message: "relay unreachable", status: nil) }
     }
 
+    /// Batches stay under the relay's 50-record and ~1 MB body limits (a photo chunk is ~70 KB sealed).
     public func push(_ records: [RecordCrypto.Sealed]) async throws {
-        for chunk in stride(from: 0, to: records.count, by: Self.pushBatch).map({ Array(records[$0..<min($0 + Self.pushBatch, records.count)]) }) {
+        var chunk: [RecordCrypto.Sealed] = [], bytes = 0
+        func flush() async throws {
+            guard !chunk.isEmpty else { return }
             let body = chunk.map { ["record_id": $0.recordID, "nonce": $0.nonce, "ciphertext": $0.ciphertext] }
             _ = try await request("POST", "/v1/push", json: ["records": body])
+            chunk = []; bytes = 0
         }
+        for r in records {
+            let size = r.recordID.utf8.count + r.nonce.utf8.count + r.ciphertext.utf8.count + 64
+            if chunk.count >= Self.pushBatch || (!chunk.isEmpty && bytes + size > Self.pushBytes) { try await flush() }
+            chunk.append(r); bytes += size
+        }
+        try await flush()
     }
 
     public func pull(since: Int, limit: Int = 100) async throws -> PullResult {

@@ -20,6 +20,8 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSCameraUsageDescription</key>
+	<string>AtomHealth Sync takes meal photos for the chat with your AtomHealth coach. Photos are resized, then sent end-to-end encrypted to your Mac.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>AtomHealth Sync reads your weight, workouts, activity and nutrition from Apple Health so your AtomHealth Mac app can use them.</string>
 	<key>NSHealthUpdateUsageDescription</key>

@@ -31,11 +31,15 @@ public enum JSONValue: Codable, Equatable, Sendable {
         return nil
     }
     public var doubleValue: Double? { if case .number(let n) = self { return n } else { return nil } }
+    public var intValue: Int? { if case .number(let n) = self, n == n.rounded(), abs(n) < 1e15 { return Int(n) } else { return nil } }
+    public var boolValue: Bool? { if case .bool(let b) = self { return b } else { return nil } }
+    public var arrayValue: [JSONValue]? { if case .array(let a) = self { return a } else { return nil } }
     public var stringValue: String? { if case .string(let s) = self { return s } else { return nil } }
 }
 
 public enum EnvelopeType: String, Codable, Sendable {
     case weight, meal, dashboard
+    case chatIn = "chat_in", chatOut = "chat_out"
     case activityDay = "activity_day", nutritionDay = "nutrition_day", workout
 }
 

@@ -127,8 +127,10 @@ def keyboard(meal_id, status):
 
 class TelegramBot:
     def __init__(self, db, *, cfg, target_kcal, latest_weight, kv_get, kv_set, plan=lambda: {},
-                 context=lambda meal=None: None, notify=lambda: None, api_factory=TgApi, api_base=API):
+                 context=lambda meal=None: None, notify=lambda: None, api_factory=TgApi, api_base=API,
+                 source="telegram"):
         self.db, self.cfg, self.plan, self.context, self.notify = db, cfg, plan, context, notify
+        self.source = source    # tags the meals/advice this chat creates ("telegram" or "phone")
         self.target_kcal, self.latest_weight = target_kcal, latest_weight
         self.kv_get, self.kv_set = kv_get, kv_set
         self.api_factory, self.api_base = api_factory, api_base
@@ -360,7 +362,7 @@ class TelegramBot:
                                     "⚠️ The AI model isn't reachable right now. Please try again in a minute.")
         text = (f"{title}\n" if title else "") + esc(r["headline"]) + "\n\n" + esc(r["text"])
         await self._edit(chat_id, note["message_id"], text)
-        advisor.save_advice(self.db, kind, r, question=question, meal_id=meal_id, source="telegram")
+        advisor.save_advice(self.db, kind, r, question=question, meal_id=meal_id, source=self.source)
         self.notify()                                   # lets the dashboard show it right away
 
     def _meal_analysis(self, meal_id):
@@ -389,7 +391,7 @@ class TelegramBot:
         if cmd == "/edit":
             return await self._edit_cmd(chat_id, args)
         if cmd == "/undo":
-            r = food.last_meal(self.db, "telegram")
+            r = food.last_meal(self.db, self.source)
             if not r:
                 return await self._send(chat_id, "Nothing to undo.")
             dropped = advisor.purge_for_meal(self.db, r["id"], r["ts"])   # advice that counted this meal
@@ -609,7 +611,7 @@ class TelegramBot:
                         return await self._edit(chat_id, note["message_id"],
                                                 "🤔 I couldn't find any food there. Send a photo of your meal "
                                                 "or describe what you ate.")
-                    meal_id = food.store_meal(self.db, analysis, photos=photos, caption=caption, source="telegram")
+                    meal_id = food.store_meal(self.db, analysis, photos=photos, caption=caption, source=self.source)
                 if extending and s.get("msg_id"):  # old message loses its buttons, the new one carries them
                     try:
                         await self._edit(chat_id, s["msg_id"], "↪️ Updated below.")
