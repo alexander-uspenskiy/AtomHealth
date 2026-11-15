@@ -27,11 +27,17 @@ enum HK {
     static let active = HKQuantityType(.activeEnergyBurned)
     static let basal = HKQuantityType(.basalEnergyBurned)
     static let steps = HKQuantityType(.stepCount)
+    static let exercise = HKQuantityType(.appleExerciseTime)
+    static let restingHR = HKQuantityType(.restingHeartRate)
+    static let hrv = HKQuantityType(.heartRateVariabilitySDNN)
+    static let vo2max = HKQuantityType(.vo2Max)
+    static let sleep = HKCategoryType(.sleepAnalysis)
     static let food = HKCorrelationType(.food)
     static let workout = HKObjectType.workoutType()
 
     static let kg = HKUnit.gramUnit(with: .kilo), g = HKUnit.gram(), kcal = HKUnit.kilocalorie(), pct = HKUnit.percent()
-    static let readTypes: Set<HKObjectType> = [bodyMass, bodyFat, leanMass, energy, protein, carbs, fat, fiber, active, basal, steps, workout]
+    static let readTypes: Set<HKObjectType> = [bodyMass, bodyFat, leanMass, energy, protein, carbs, fat, fiber, active, basal, steps, workout,
+                                                 exercise, restingHR, hrv, vo2max, sleep]
     // Correlations (food) cannot be requested directly; saving one needs write access to every nutrient inside it.
     static let writeTypes: Set<HKSampleType> = [bodyMass, bodyFat, leanMass, energy, protein, carbs, fat, fiber]
 
@@ -232,6 +238,90 @@ public final class HealthKitReader: @unchecked Sendable {
         for day in kcal.keys.sorted() {
             let c = HealthMapping.nutritionDayChange(day: day, kcal: kcal[day], protein: prot[day], carbs: carb[day], fat: fat[day], fiber: fib[day])
             await enqueueIfChanged(c, key: "fp.nutrition.\(day)")
+        }
+    }
+
+    // MARK: the Overview's own read (never leaves the phone)
+    /// Per-day steps, energy, exercise, resting heart rate, HRV and sleep for the last `days` days, plus VO₂ max and the
+    /// last week's workouts. Cheap enough to run on every refresh; each part is empty when Health has nothing (or no access).
+    public func summary(days: Int = 30) async -> HealthSummary {
+        let end = Date(), start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end)
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        async let steps = daily(HK.steps, .count(), .cumulativeSum, from: start, to: end)
+        async let active = daily(HK.active, HK.kcal, .cumulativeSum, from: start, to: end)
+        async let basal = daily(HK.basal, HK.kcal, .cumulativeSum, from: start, to: end)
+        async let exercise = daily(HK.exercise, .minute(), .cumulativeSum, from: start, to: end)
+        async let rhr = daily(HK.restingHR, bpm, .discreteAverage, from: start, to: end)
+        async let hrv = daily(HK.hrv, .secondUnit(with: .milli), .discreteAverage, from: start, to: end)
+        async let sleep = sleepHours(from: start.addingTimeInterval(-12 * 3600), to: end)
+        async let vo2 = latestVO2()
+        async let workouts = recentWorkouts(since: calendar.date(byAdding: .day, value: -7, to: end) ?? start)
+        let (st, ac, ba, ex, rh, hv, sl) = await (steps, active, basal, exercise, rhr, hrv, sleep)
+        var rows: [HealthSummary.Day] = []
+        for i in 0..<days {
+            guard let d = calendar.date(byAdding: .day, value: i, to: start) else { continue }
+            let k = HealthMapping.dayKey(d, calendar: calendar)
+            rows.append(.init(day: k, steps: st[k], activeKcal: ac[k], basalKcal: ba[k], exerciseMin: ex[k], restingHR: rh[k], hrv: hv[k], sleepH: sl[k]))
+        }
+        return HealthSummary(days: rows, vo2max: await vo2, workouts: await workouts)
+    }
+
+    func daily(_ t: HKQuantityType, _ unit: HKUnit, _ options: HKStatisticsOptions, from start: Date, to end: Date) async -> [String: Double] {
+        await withCheckedContinuation { cont in
+            let q = HKStatisticsCollectionQuery(quantityType: t, quantitySamplePredicate: nil, options: options,
+                                                anchorDate: start, intervalComponents: DateComponents(day: 1))
+            q.initialResultsHandler = { _, c, _ in
+                var out: [String: Double] = [:]
+                c?.enumerateStatistics(from: start, to: end) { s, _ in
+                    let v = options == .cumulativeSum ? s.sumQuantity() : s.averageQuantity()
+                    if let v = v?.doubleValue(for: unit) { out[HealthMapping.dayKey(s.startDate, calendar: self.calendar)] = v }
+                }
+                cont.resume(returning: out)
+            }
+            store.execute(q)
+        }
+    }
+
+    func samples(_ type: HKSampleType, _ predicate: NSPredicate?, limit: Int = HKObjectQueryNoLimit, newestFirst: Bool = false) async -> [HKSample] {
+        await withCheckedContinuation { cont in
+            let sort = newestFirst ? [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)] : nil
+            store.execute(HKSampleQuery(sampleType: type, predicate: predicate, limit: limit, sortDescriptors: sort) { _, r, _ in
+                cont.resume(returning: r ?? []) })
+        }
+    }
+
+    func sleepHours(from start: Date, to end: Date) async -> [String: Double] {
+        let found = await samples(HK.sleep, HKQuery.predicateForSamples(withStart: start, end: end))
+        let asleep = Set(HKCategoryValueSleepAnalysis.allAsleepValues.map(\.rawValue))
+        let spans = found.compactMap { s -> (start: Date, end: Date)? in
+            guard let c = s as? HKCategorySample, asleep.contains(c.value) else { return nil }
+            return (c.startDate, c.endDate)
+        }
+        return SleepMath.hoursByDay(spans, calendar: calendar)
+    }
+
+    func latestVO2() async -> Double? {
+        let r = await samples(HK.vo2max, nil, limit: 1, newestFirst: true)
+        return (r.first as? HKQuantitySample)?.quantity.doubleValue(for: HKUnit(from: "ml/(kg*min)"))
+    }
+
+    func recentWorkouts(since: Date) async -> [HealthSummary.Workout] {
+        let r = await samples(HK.workout, HKQuery.predicateForSamples(withStart: since, end: nil), newestFirst: true)
+        return r.compactMap { s -> HealthSummary.Workout? in
+            guard let w = s as? HKWorkout else { return nil }
+            let km = w.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meterUnit(with: .kilo))
+            return .init(id: w.uuid.uuidString, kind: Self.name(w.workoutActivityType), start: w.startDate.timeIntervalSince1970,
+                         minutes: w.duration / 60, kcal: w.statistics(for: HK.active)?.sumQuantity()?.doubleValue(for: HK.kcal), distanceKm: km)
+        }
+    }
+
+    static func name(_ t: HKWorkoutActivityType) -> String {
+        switch t {
+        case .running: "Running"; case .walking: "Walking"; case .cycling: "Cycling"; case .swimming: "Swimming"
+        case .hiking: "Hiking"; case .yoga: "Yoga"; case .functionalStrengthTraining, .traditionalStrengthTraining: "Strength"
+        case .highIntensityIntervalTraining: "HIIT"; case .elliptical: "Elliptical"; case .rowing: "Rowing"
+        case .dance, .cardioDance, .socialDance: "Dance"; case .coreTraining: "Core"; case .pilates: "Pilates"
+        default: "Workout"
         }
     }
 

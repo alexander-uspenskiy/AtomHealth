@@ -1,28 +1,52 @@
 import AtomHealthCore
 import SwiftUI
 
-/// The Overview tab of the Mac dashboard: latest reading and KPIs, weight scale, coach, today's nutrition,
-/// "where you stand" gauges and goals. All numbers come from the Mac's snapshot; pull down to sync.
+/// The Overview tab: the latest weight, then the charts and critical indexes (Apple Health read on this phone, plus the
+/// energy balance that joins it with the Mac's meals), then the Mac dashboard's scale, coach, nutrition, gauges and goals.
+/// Pull down to sync.
 struct OverviewView: View {
     let model: AppModel
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                if let s = model.dashboard {
-                    let m = DashboardMath(s)
+                let m = model.dashboard.map { DashboardMath($0) }
+                let hm = model.health.map { HealthMath($0, dashboard: model.dashboard) }
+                let hasHealth = !(model.health?.isEmpty ?? true)
+                if m == nil && !hasHealth {
+                    empty.padding(24)
+                } else {
                     LazyVStack(spacing: 14) {
-                        if let r = m.latest { hero(r, s) }
-                        kpiGrid(m)
-                        if let g = m.weightGauge() { Card { RangeGauge(g: g) } }
-                        coach(m)
-                        today(m)
-                        stand(m)
-                        goals(m)
+                        if let m, let r = m.latest, let s = model.dashboard { hero(r, s) }
+                        // charts and the most critical indexes first
+                        if let hm, hasHealth {
+                            TrendCard(m: hm)
+                            RingsCard(m: hm)
+                            let idx = hm.indices()
+                            if !idx.isEmpty { IndexGrid(items: idx) }
+                            let hg = hm.gauges()
+                            if !hg.isEmpty {
+                                Card(title: "Heart and sleep", subtitle: "Where your latest values sit on the usual scales") {
+                                    ForEach(Array(hg.enumerated()), id: \.offset) { n, g in
+                                        if n > 0 { Divider() }
+                                        RangeGauge(g: g)
+                                    }
+                                }
+                            }
+                        } else {
+                            HealthEmptyCard(busy: model.busy) { Task { await model.syncNow() } }
+                        }
+                        if let m {
+                            if let g = m.weightGauge() { Card { RangeGauge(g: g) } }
+                            kpiGrid(m)
+                            coach(m)
+                            today(m)
+                            stand(m)
+                            goals(m)
+                        }
+                        if let w = model.health?.workouts, !w.isEmpty { workouts(w) }
                     }
                     .padding(16)
-                } else {
-                    empty.padding(24)
                 }
             }
             .background(Color(.systemGroupedBackground))
@@ -46,24 +70,49 @@ struct OverviewView: View {
     }
 
     private func hero(_ r: DashboardSnapshot.Reading, _ s: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("LATEST READING").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(Fmt.num(r.weight, 2)).font(.system(size: 54, weight: .bold, design: .rounded)).monospacedDigit()
-                Text("kg").font(.title3).foregroundStyle(.white.opacity(0.85))
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("LATEST READING").font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(Fmt.num(r.weight, 2)).font(.system(size: 38, weight: .bold, design: .rounded)).monospacedDigit()
+                    Text("kg").font(.headline).foregroundStyle(.white.opacity(0.85))
+                }
             }
-            Text("Measured \(r.date.formatted(.relative(presentation: .named)))")
-                .font(.subheadline).foregroundStyle(.white.opacity(0.9))
-            if let g = s.generatedAt {
-                Text("Mac data from \(Date(timeIntervalSince1970: g).formatted(.relative(presentation: .named)))")
-                    .font(.caption).foregroundStyle(.white.opacity(0.7))
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Measured \(r.date.formatted(.relative(presentation: .named)))").font(.caption).foregroundStyle(.white.opacity(0.9))
+                if let b = r.bmi { Text("BMI \(Fmt.num(b, 1))").font(.caption.weight(.semibold)) }
+                if let f = r.fatPct { Text("Body fat \(Fmt.num(f, 1))%").font(.caption.weight(.semibold)) }
             }
         }
         .foregroundStyle(.white)
-        .frame(maxWidth: .infinity, alignment: .leading).padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 14)
         .background(LinearGradient(colors: [Color(hex: 0x4F46E5), Color(hex: 0x2563EB), Color(hex: 0x0EA5A4)],
                                    startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func workouts(_ list: [HealthSummary.Workout]) -> some View {
+        Card(title: "Recent workouts", subtitle: "Last 7 days, from Apple Health") {
+            VStack(spacing: 0) {
+                ForEach(Array(list.prefix(6).enumerated()), id: \.element.id) { n, w in
+                    if n > 0 { Divider() }
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(w.kind).font(.subheadline.weight(.semibold))
+                            Text(w.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(Int(w.minutes.rounded())) min").font(.subheadline.weight(.semibold)).monospacedDigit()
+                            Text([w.kcal.map { "\(Int($0.rounded())) kcal" }, w.distanceKm.map { "\(Fmt.num($0, 1)) km" }]
+                                .compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+        }
     }
 
     private func kpiGrid(_ m: DashboardMath) -> some View {

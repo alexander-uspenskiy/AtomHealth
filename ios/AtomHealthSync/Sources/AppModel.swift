@@ -20,6 +20,8 @@ final class AppModel {
     var busy = false
     /// The Mac's latest Overview numbers; kept on disk so the tab opens instantly and works offline.
     var dashboard: DashboardSnapshot?
+    /// What this phone reads from Apple Health for the Overview (steps, sleep, heart rate…); cached like the dashboard.
+    var health: HealthSummary?
     /// The conversation with the Mac's bot (the Chat tab); kept on disk like the dashboard.
     var chat = ChatSnapshot()
     /// The oldest ping the Mac has not answered yet (or the last answered one): drives "Checking Mac…" / "Mac not responding".
@@ -30,6 +32,7 @@ final class AppModel {
     private let store: JSONFileStateStore
     private let reader: HealthKitReader
     private let dashboardStore: DashboardStore
+    private let healthURL: URL
     let chatStore: ChatStore
     private let sink: RoutingSink
     private var debounce: Task<Void, Never>?
@@ -40,6 +43,7 @@ final class AppModel {
         store = JSONFileStateStore(url: dir.appendingPathComponent("sync-state.json"))
         reader = HealthKitReader(state: store)
         dashboardStore = DashboardStore(url: dir.appendingPathComponent("dashboard.json"))
+        healthURL = dir.appendingPathComponent("health-summary.json")
         chatStore = ChatStore(directory: dir.appendingPathComponent("chat"))
         sink = RoutingSink(health: HealthKitSink(), dashboard: dashboardStore, chat: chatStore)
         if let u = Keychain.get("url").flatMap({ String(data: $0, encoding: .utf8) }),
@@ -67,7 +71,8 @@ final class AppModel {
     func unpair() {
         ["url", "device", "token", "key"].forEach(Keychain.delete)
         config = nil; phase = .unpaired; status = "Not paired"; lastReport = nil; lastSync = nil; dashboard = nil
-        chat = ChatSnapshot()
+        chat = ChatSnapshot(); health = nil
+        try? FileManager.default.removeItem(at: healthURL)
         Task { await dashboardStore.clear(); await chatStore.clear() }
     }
 
@@ -75,15 +80,19 @@ final class AppModel {
         #if DEBUG
         // Test hook for the simulator only: `simctl launch … -debugPairingCode ahpair1:…` pairs without typing.
         if config == nil, let code = UserDefaults.standard.string(forKey: "debugPairingCode") { pair(code: code) }
+        // `-debugSampleHealth YES`: synthetic Apple Health numbers, no pairing, to look at the Overview in the simulator.
+        if UserDefaults.standard.bool(forKey: "debugSampleHealth") { health = Self.sampleHealth(); phase = .paired; return }
         #endif
         guard config != nil else { return }
         dashboard = await dashboardStore.load()
         chat = await chatStore.snapshot()
+        if let d = try? Data(contentsOf: healthURL) { health = try? JSONDecoder().decode(HealthSummary.self, from: d) }
         do {
             try await reader.requestAuthorization()
             reader.onChange = { [weak self] in Task { @MainActor in self?.scheduleSync() } }
             try await reader.start()
         } catch { self.error = "Health access: \(error.localizedDescription)" }
+        await refreshHealth()
         await syncNow()
     }
 
@@ -98,7 +107,7 @@ final class AppModel {
         guard let c = config, !busy else { return }
         busy = true; defer { busy = false }
         do {
-            if health { await reader.refresh() }
+            if health { await reader.refresh(); await refreshHealth() }
             let engine = SyncEngine(deviceID: c.deviceID, key: c.key, relay: try RelayClient(url: c.url, token: c.token),
                                     store: store, sink: sink)
             lastReport = try await engine.cycle(); lastSync = Date(); error = nil; status = "Up to date"
@@ -110,6 +119,31 @@ final class AppModel {
         dashboard = await dashboardStore.load()
         chat = await chatStore.snapshot()
     }
+
+    /// Re-reads Apple Health for the Overview. An empty answer (Health locked or access off) never replaces numbers we already have.
+    func refreshHealth() async {
+        let s = await reader.summary()
+        if s.isEmpty, let old = health, !old.isEmpty { return }
+        health = s
+        if let d = try? JSONEncoder().encode(s) { try? d.write(to: healthURL, options: [.atomic, .completeFileProtection]) }
+    }
+
+    #if DEBUG
+    static func sampleHealth() -> HealthSummary {
+        let cal = Calendar.current
+        let days = (0..<30).map { i -> HealthSummary.Day in
+            let back = 29 - i, d = cal.date(byAdding: .day, value: -back, to: Date()) ?? Date(), w = Double(i)
+            return .init(day: HealthMapping.dayKey(d), steps: back == 0 ? 6_240 : 7_000 + 3_500 * abs(sin(w * 0.9)),
+                         activeKcal: back == 0 ? 310 : 350 + 220 * abs(cos(w * 0.7)), basalKcal: back == 0 ? 1_050 : 1_720,
+                         exerciseMin: back == 0 ? 22 : 18 + 35 * abs(sin(w * 1.3)), restingHR: 58 + 4 * sin(w * 0.5) + (back == 0 ? 5 : 0),
+                         hrv: 52 + 9 * cos(w * 0.6) - (back == 0 ? 14 : 0), sleepH: back == 0 ? 6.4 : 6.8 + 1.1 * sin(w * 0.8))
+        }
+        let now = Date().timeIntervalSince1970
+        return HealthSummary(days: days, vo2max: 43.6, workouts: [
+            .init(id: "a", kind: "Running", start: now - 20_000, minutes: 42, kcal: 410, distanceKm: 6.3),
+            .init(id: "b", kind: "Strength", start: now - 130_000, minutes: 55, kcal: 320)])
+    }
+    #endif
 
     // MARK: chat
     /// Sends text and/or photos (already resized) to the Mac's bot. Photos go as chunks, then one message that ties them.
