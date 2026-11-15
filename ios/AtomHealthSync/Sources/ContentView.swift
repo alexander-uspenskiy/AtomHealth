@@ -33,6 +33,17 @@ struct ContentView: View {
             }
         }
         .task { await model.start() }
+        // Probe the Mac for as long as the app is open, so the status is already known when the chat is opened:
+        // "are you there?" every 40 s (every 5 min while it is not answering).
+        .task(id: "\(scenePhase)-\(model.phase == .paired)") {
+            guard scenePhase == .active, model.phase == .paired else { return }
+            var last = Date.distantPast
+            while !Task.isCancelled {
+                let every: TimeInterval = model.chatStatus() == .macUnreachable ? 300 : 40
+                if Date().timeIntervalSince(last) >= every { last = Date(); await model.pingMac() }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
         .onChange(of: scenePhase) { _, p in if p == .active { Task { await model.syncNow() } } }
     }
 
@@ -105,6 +116,13 @@ struct AppTabBar: View {
                                                    startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
                         .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: on ? 5 : 3))
                         .shadow(color: Theme.accent.opacity(on ? 0.55 : 0.35), radius: on ? 12 : 8, y: 4)
+                        .overlay(alignment: .bottomTrailing) {      // is the Mac there? (green / grey / orange / red)
+                            TimelineView(.periodic(from: .now, by: 3)) { ctx in
+                                Circle().fill(model.chatStatus(at: ctx.date).color).frame(width: 18, height: 18)
+                                    .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 3))
+                            }
+                            .offset(x: 1, y: 1).accessibilityHidden(true)
+                        }
                     if model.tab != .chat, model.chat.unread > 0 {
                         Text("\(model.chat.unread)").font(.caption.weight(.bold)).foregroundStyle(.white)
                             .padding(.horizontal, 7).padding(.vertical, 2).background(Color.red, in: Capsule())

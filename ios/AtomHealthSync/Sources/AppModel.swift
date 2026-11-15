@@ -130,6 +130,11 @@ final class AppModel {
         await syncNow(health: false)
     }
 
+    /// What the chat header and the dot on the Chat button show; depends on the clock, so callers pass `now`.
+    func chatStatus(at now: Date = Date()) -> ChatStatus {
+        ChatStatus.derive(chat: chat, pingSentAt: pingSentAt, relayOK: relayOK, now: now)
+    }
+
     /// "Are you there?" to the Mac; it answers with its presence and whether its AI backend is reachable.
     func pingMac() async {
         guard config != nil else { return }

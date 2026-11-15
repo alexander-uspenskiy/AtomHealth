@@ -96,16 +96,14 @@ struct ChatView: View {
     }
 
     // MARK: polling
-    /// While the tab is open the app checks the relay every few seconds (faster while an answer is pending) and asks the
-    /// Mac "are you there?" on opening and then every ~40 s (every 5 min while it is not answering).
+    /// While the tab is open the app checks the relay every few seconds (faster while an answer is pending).
     private func poll() async {
         guard scenePhase == .active else { return }
         await model.markChatRead()
-        var lastPing = Date.distantPast
+        // the app keeps probing the Mac while it is open; ask again on opening if the last answer is old
+        if Date().timeIntervalSince(model.pingSentAt ?? .distantPast) > 20 { await model.pingMac() }
         while !Task.isCancelled {
-            let every: TimeInterval = status() == .macUnreachable ? 300 : 40
-            if Date().timeIntervalSince(lastPing) >= every { lastPing = Date(); await model.pingMac() }
-            else { await model.syncNow(health: false) }
+            await model.syncNow(health: false)
             let waiting = model.chat.awaitingReply || model.chat.isTyping()
             try? await Task.sleep(for: .seconds(waiting ? 1.5 : 4))
         }
@@ -114,13 +112,11 @@ struct ChatView: View {
     // MARK: header and status
     /// The status depends on the clock ("no answer for 25 s"), and SwiftUI does not redraw when nothing observable
     /// changed (a dead Mac sends nothing), so the views that show it re-evaluate on a timer.
-    private func status(at now: Date = Date()) -> ChatStatus {
-        ChatStatus.derive(chat: chat, pingSentAt: model.pingSentAt, relayOK: model.relayOK, now: now)
-    }
+    private func status(at now: Date = Date()) -> ChatStatus { model.chatStatus(at: now) }
 
     private var header: some View {
         TimelineView(.periodic(from: .now, by: 2)) { ctx in
-            let s = presentation(status(at: ctx.date))
+            let s = status(at: ctx.date)
             VStack(spacing: 1) {
                 Text("Coach").font(.headline)
                 HStack(spacing: 5) {
@@ -129,17 +125,6 @@ struct ChatView: View {
                 }
             }
             .accessibilityElement(children: .combine)
-        }
-    }
-
-    private func presentation(_ s: ChatStatus) -> (label: String, color: Color) {
-        switch s {
-        case .offline: ("No connection", .red)
-        case .checking: ("Checking your Mac…", .gray)
-        case .macUnreachable: ("Mac not responding", .orange)
-        case .waiting: ("Waiting for the answer…", Theme.accent)
-        case .working: ("Working…", Theme.accent)
-        case .online(let ai): ai == false ? ("Online · AI offline", .orange) : ("Online", Theme.good)
         }
     }
 
@@ -359,5 +344,27 @@ struct ChatView: View {
         }.value
         guard let i = staged.firstIndex(where: { $0.id == id }) else { return }
         if let (r, t) = out { staged[i].result = r; staged[i].preview = UIImage(data: t) } else { staged[i].failed = true }
+    }
+}
+
+extension ChatStatus {
+    var label: String {
+        switch self {
+        case .offline: "No connection"
+        case .checking: "Checking your Mac…"
+        case .macUnreachable: "Mac not responding"
+        case .waiting: "Waiting for the answer…"
+        case .working: "Working…"
+        case .online(let ai): ai == false ? "Online · AI offline" : "Online"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .offline: .red
+        case .checking: .gray
+        case .macUnreachable: .orange
+        case .waiting, .working: Theme.accent
+        case .online(let ai): ai == false ? .orange : Theme.good
+        }
     }
 }
