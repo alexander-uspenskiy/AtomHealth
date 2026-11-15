@@ -33,7 +33,7 @@ Related: [PLAN-apple-health-app.md](PLAN-apple-health-app.md) (product plan), [A
 4. Check both directions: a weight logged on the Mac appears in Apple Health, and one from Apple Health appears in AtomHealth.
 
 ## D. Routine
-- Re-run from Xcode at least every 7 days (calendar reminder).
+- Re-run from Xcode (or the CLI commands in Notes, which work over Wi-Fi) at least every 7 days (calendar reminder).
 - If sync stops, check the app has not expired before debugging the relay.
 
 ## Effort and status
@@ -53,6 +53,13 @@ Related: [PLAN-apple-health-app.md](PLAN-apple-health-app.md) (product plan), [A
 ## Notes
 - No iOS simulator runtime is installed yet; the core package is tested on macOS (`cd ios/AtomHealthCore && swift test`). Download an iOS runtime in Xcode > Settings > Components to run the app in a simulator.
 - Regenerate vectors after any crypto change: `PYTHONPATH=src python tools/gen_crypto_vectors.py ios/AtomHealthCore/Tests/AtomHealthCoreTests/Resources/crypto_vectors.json`.
+- Wi-Fi (cable-free) debugging, set up 2026-11-14 on the iPhone XR (iOS 18.7): once the phone is paired over USB, `xcrun devicectl list devices` shows it as `connected` with transport `localNetwork` after the cable is unplugged. This Xcode has no "Connect via network" checkbox (the Devices window is replaced by the Device Hub app, which has none either); the wireless link is automatic while the Mac and phone are on the same Wi-Fi and the phone is unlocked. Requirements: same network, phone unlocked.
+- CLI build, install and launch over Wi-Fi (from `ios/AtomHealthSync`; `DEVELOPMENT_TEAM` is passed on the command line because `project.yml` deliberately leaves it empty; the team ID is the `OU` of the Apple Development certificate in the Keychain):
+  - `xcodebuild -project AtomHealthSync.xcodeproj -scheme AtomHealthSync -destination 'id=<device UDID>' -derivedDataPath <dir> -allowProvisioningUpdates DEVELOPMENT_TEAM=<team> build`
+  - `xcrun devicectl device install app --device <UDID> <dir>/Build/Products/Debug-iphoneos/AtomHealthSync.app`
+  - `xcrun devicectl device process launch --device <UDID> com.alex.atomhealthsync`
+  - Verified on 2026-11-14: build, install and launch all succeeded over `localNetwork`. The app UI and sync on the real device were not checked in that run.
+- Bundle ID in use: `com.alex.atomhealthsync`.
 
 ## Open questions
 - Does HealthKit background delivery work on a free team? (test in step C)
