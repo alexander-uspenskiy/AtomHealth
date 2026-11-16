@@ -26,6 +26,15 @@
 	<string>Atom Health reads your weight, workouts, activity, sleep, heart rate and nutrition from Apple Health to show them on the Overview and to share them with your own AtomHealth Mac app.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Atom Health writes weights and meals logged in AtomHealth into Apple Health.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.alex.atomhealthsync.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

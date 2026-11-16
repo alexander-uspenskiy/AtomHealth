@@ -6,6 +6,11 @@ import Observation
 
 @MainActor @Observable
 final class AppModel {
+    /// One model for the whole process: HealthKit can launch the app in the background with no UI,
+    /// so sync must start from `AtomHealthSyncApp.init`, not from a view's `.task`.
+    static let shared = AppModel()
+    private var started = false
+
     enum Phase { case unpaired, paired }
     enum Tab { case overview, chat, sync }
     /// The selected tab lives here so any screen can switch to another (back from Chat, "Ask the coach" on Overview).
@@ -77,6 +82,8 @@ final class AppModel {
     }
 
     func start() async {
+        if started { return }
+        started = true
         #if DEBUG
         // Test hook for the simulator only: `simctl launch … -debugPairingCode ahpair1:…` pairs without typing.
         if config == nil, let code = UserDefaults.standard.string(forKey: "debugPairingCode") { pair(code: code) }

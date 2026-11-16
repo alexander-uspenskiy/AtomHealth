@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var model = AppModel()
+    @State private var model = AppModel.shared
     @State private var code = ""
     @Environment(\.scenePhase) private var scenePhase
 
