@@ -19,7 +19,7 @@ PLAN = {"kcal": 1900, "maintenance": 2300, "adjust": -400, "bmr": 1700, "goal": 
 
 @pytest.fixture(autouse=True)
 def clean():
-    for t in ("meal_items", "meal_photos", "meals", "readings", "advice"):
+    for t in ("meal_items", "meal_photos", "meals", "readings", "advice", "activity_days", "workouts"):
         appmod.db.execute(f"DELETE FROM {t}")
     appmod.db.execute("DELETE FROM kv WHERE k IN ('telegram','ai','tg_last_summary')")
     appmod.db.commit()
@@ -374,3 +374,21 @@ def test_summary_settings_roundtrip(monkeypatch):
         return bad.status, (await ok.json())["telegram"]
     bad, t = _client(fn)
     assert bad == 400 and t["summary_time"] == "20:30" and t["daily_summary"] is False
+
+
+def test_snapshot_includes_activity_today_and_week():
+    from datetime import datetime, timedelta
+    assert advisor.activity_summary(appmod.db, NOW) is None
+    base = datetime.fromtimestamp(NOW).replace(hour=0, minute=0, second=0, microsecond=0)
+    for i in range(0, 7):
+        day = (base - timedelta(days=i)).strftime("%Y-%m-%d")
+        appmod.db.execute("INSERT INTO activity_days(day,active_kcal,basal_kcal,steps,updated_at) VALUES(?,?,?,?,?)",
+                          (day, 400 + i, 1700, 8000 + i * 1000, 1))
+    ts = int(base.timestamp()) + 3600
+    appmod.db.execute("INSERT INTO workouts(sync_id,start_ts,end_ts,type,kcal,distance_m,updated_at) VALUES(?,?,?,?,?,?,?)",
+                      ("w1", ts, ts + 1800, "37", 300, 5000, 1))
+    appmod.db.commit()
+    a = advisor.snapshot(appmod.db, {"sex": "male"}, PLAN, 80, NOW)["activity"]
+    assert a["today"]["steps"] == 8000 and a["today"]["workouts"]["minutes"] == 30
+    assert a["last_7_days"]["avg_steps"] == 11500 and a["last_7_days"]["workout_types"] == {"Running": 1}
+    assert len(a["last_7_days"]["per_day"]) == 7

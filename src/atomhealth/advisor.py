@@ -39,6 +39,10 @@ only. A null window means too little data: do not guess it.
 - special_requirements (if present) is the user's own note about health conditions, diet or preferences \
 (e.g. high cholesterol, vegetarian, allergies). Respect it in every suggestion: never recommend foods that \
 conflict with it, and tailor tips to it. Do not diagnose or give medical claims.
+- activity (if present) is Apple Health data: 'today' (steps, active/basal kcal, workouts so far; the day is \
+still in progress) and 'last_7_days' (averages, totals, workouts, per-day steps). Use it in daily and weekly \
+advice and answers: relate movement to intake and the goal (e.g. a low-step week, a hard workout day needing \
+more protein), and suggest one realistic activity tweak. Null means no data: do not guess it.
 - If few days are logged (days_logged), say the advice will sharpen with more logging.
 - Plain text only: no markdown, no headings, no bullet symbols other than '-'. At most one emoji.
 - Reply in the language of the user's question if there is one, otherwise English.
@@ -168,6 +172,55 @@ def today_meals(db, now=None):
             for r in food.meals_between(db, start, start + 86400)]
 
 
+def activity_summary(db, now=None):
+    """Apple Health activity (synced from the iPhone): today so far and the last 7 days, main indicators only.
+    None when no activity data exists. Today is still in progress, so averages use finished days only."""
+    now = now or time.time()
+    days = [m.strftime("%Y-%m-%d") for m in _midnights(now, 7)]
+    rows = {r["day"]: r for r in db.execute(
+        "SELECT day, active_kcal, basal_kcal, steps FROM activity_days WHERE day>=? AND day<=?", (days[0], days[-1]))}
+    start = int(_midnights(now, 7)[0].timestamp())
+    wk = db.execute("SELECT start_ts, end_ts, type, kcal, distance_m FROM workouts WHERE start_ts>=? AND start_ts<=? "
+                    "ORDER BY start_ts", (start, int(now) + 86400)).fetchall()
+    if not rows and not wk:
+        return None
+    from .activity import workout_type, MAX_MINUTES
+
+    def wsum(items):
+        mins = [(w["end_ts"] - w["start_ts"]) / 60 for w in items if w["end_ts"] and w["end_ts"] >= w["start_ts"]]
+        return {"count": len(items), "minutes": round(sum(m for m in mins if m <= MAX_MINUTES)),
+                "kcal": round(sum(w["kcal"] or 0 for w in items)),
+                "km": round(sum((w["distance_m"] or 0) for w in items) / 1000, 1)}
+
+    def day_of(w):
+        return datetime.fromtimestamp(w["start_ts"]).strftime("%Y-%m-%d")
+
+    def vals(key, ds):
+        return [rows[d][key] for d in ds if d in rows and rows[d][key] is not None]
+
+    t = rows.get(days[-1])
+    today = {"steps": t["steps"] if t else None,
+             "active_kcal": round(t["active_kcal"]) if t and t["active_kcal"] is not None else None,
+             "basal_kcal": round(t["basal_kcal"]) if t and t["basal_kcal"] is not None else None,
+             "workouts": wsum([w for w in wk if day_of(w) == days[-1]]),
+             "note": "day in progress: totals so far" if t else "no Health data synced for today yet"}
+    done = days[:-1]
+    steps, act = vals("steps", done), vals("active_kcal", done)
+    types = {}
+    for w in wk:
+        label = workout_type(w["type"])[0]
+        types[label] = types.get(label, 0) + 1
+    week = {"days_with_data": len([d for d in done if d in rows]),
+            "avg_steps": round(sum(steps) / len(steps)) if steps else None,
+            "avg_active_kcal": round(sum(act) / len(act)) if act else None,
+            "total_steps": round(sum(vals("steps", days))), "total_active_kcal": round(sum(vals("active_kcal", days))),
+            "workouts": wsum(wk), "workout_types": types or None,
+            "per_day": [{"date": d, "steps": rows[d]["steps"],
+                         "active_kcal": round(rows[d]["active_kcal"]) if rows[d]["active_kcal"] is not None else None}
+                        for d in days if d in rows]}
+    return {"today": today, "last_7_days": week}
+
+
 def left_today(plan, today):
     """What is still available today against the targets (negative = already over)."""
     if not plan or not plan.get("kcal"):
@@ -208,6 +261,7 @@ def snapshot(db, profile, plan, weight, now=None, meal=None):
         "recent_foods": recent_foods(db, now),
         "today_meals": today_meals(db, now),
         "left_today": left_today(plan, series[-1]),
+        "activity": activity_summary(db, now),
     }
     if meal:
         snap["this_meal"] = {"type": meal["meal_type"], "totals": meal["totals"],
