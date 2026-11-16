@@ -102,3 +102,62 @@ def test_meal_tables_exist():
     assert {"ts", "kcal", "protein_g", "status", "raw_json"} <= cols
     assert app.db.execute("PRAGMA table_info(meal_items)").fetchall()
     assert app.db.execute("PRAGMA table_info(meal_photos)").fetchall()
+
+
+def _atom_app(seen, final):
+    async def upload(request):
+        seen.setdefault("uploads", []).append(await request.json())
+        return web.json_response({"id": "up1"}, status=201)
+
+    async def run(request):
+        seen["run"] = await request.json()
+        return web.json_response({"agent": "AtomHealth", "run_id": "r1"}, status=202)
+
+    async def get_run(request):
+        seen["polls"] = seen.get("polls", 0) + 1
+        st = "running" if seen["polls"] < 2 else final["status"]
+        return web.json_response({"run": {"status": st, **{k: v for k, v in final.items() if k != "status"}}})
+
+    app = web.Application()
+    app.router.add_post("/api/uploads", upload)
+    app.router.add_post("/api/agents/run", run)
+    app.router.add_get("/api/runs/{id}", get_run)
+    return app
+
+
+def _atom_call(monkeypatch, final, local_handler=None):
+    seen = {}
+
+    async def go():
+        async with TestServer(_atom_app(seen, final)) as atom:
+            local = web.Application()
+            hits = seen.setdefault("local", [])
+
+            async def lh(request):
+                hits.append(1)
+                return web.json_response({"choices": [{"message": {"content": '{"src": "local"}'}}]})
+            local.router.add_post("/v1/chat/completions", local_handler or lh)
+            async with TestServer(local) as srv:
+                monkeypatch.setenv("ATOM_BASE_URL", str(atom.make_url("")))
+                monkeypatch.setenv("ATOM_POLL", "0.01")
+                c = llm.LLM(base_url=str(srv.make_url("/v1")), model="m", api_key="k", timeout=5)
+                return await c.analyze_image("describe", b"img", system="sys")
+    return asyncio.run(go()), seen
+
+
+def test_atom_agent_run_used_when_configured(monkeypatch):
+    out, seen = _atom_call(monkeypatch, {"status": "done", "result": '{"src": "atom"}'})
+    assert out == {"src": "atom"}
+    assert seen["uploads"][0]["data_url"].startswith("data:image/jpeg;base64,")
+    assert seen["run"] == {"agent": "AtomHealth", "task": "sys\n\ndescribe", "images": ["up1"], "agent_mode": "require"}
+    assert seen["polls"] == 2 and not seen["local"]
+
+
+def test_atom_failed_run_falls_back_to_local(monkeypatch):
+    out, seen = _atom_call(monkeypatch, {"status": "failed", "error": "boom"})
+    assert out == {"src": "local"} and seen["local"]
+
+
+def test_atom_off_by_default(monkeypatch):
+    monkeypatch.delenv("ATOM_BASE_URL", raising=False)
+    assert config.atom_settings()["base_url"] == ""

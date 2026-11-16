@@ -30,6 +30,17 @@ def set_llm_overrides(d):
     _llm_overrides.update({k: v for k, v in (d or {}).items() if v})
 
 
+def atom_settings():
+    """Atom agent server. Off unless ATOM_BASE_URL is set (e.g. http://127.0.0.1:8787)."""
+    return {
+        "base_url": os.environ.get("ATOM_BASE_URL", "").rstrip("/"),
+        "agent": os.environ.get("ATOM_AGENT", "AtomHealth"),
+        "token": os.environ.get("ATOM_TOKEN", ""),
+        "timeout": float(os.environ.get("ATOM_TIMEOUT", "180")),
+        "poll": float(os.environ.get("ATOM_POLL", "1")),
+    }
+
+
 def llm_settings():
     o = _llm_overrides
     return {

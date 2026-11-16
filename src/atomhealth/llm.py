@@ -36,6 +36,19 @@ def extract_json(text: str):
     raise LLMError(f"model did not return valid JSON: {text[:200]!r}")
 
 
+def _atom_task(messages):
+    """Flatten chat messages into (task text, [image data URLs]) for an Atom agent run."""
+    texts, images = [], []
+    for m in messages:
+        c = m.get("content")
+        for part in (c if isinstance(c, list) else [{"type": "text", "text": c or ""}]):
+            if part.get("type") == "image_url":
+                images.append(part["image_url"]["url"])
+            elif part.get("text"):
+                texts.append(part["text"])
+    return "\n\n".join(texts), images
+
+
 class LLM:
     def __init__(self, base_url=None, model=None, api_key=None, timeout=None):
         s = config.llm_settings()
@@ -45,7 +58,16 @@ class LLM:
         self.timeout = timeout or s["timeout"]
 
     async def chat(self, messages, *, max_tokens=1500, temperature=0.2, thinking=False, retries=2) -> str:
-        """Return the assistant text. Thinking is off by default: it burns tokens and latency."""
+        """Return the assistant text. Thinking is off by default: it burns tokens and latency.
+        Requests that carry images go through the Atom AtomHealth agent when ATOM_BASE_URL is set,
+        and fall back to the local model if Atom fails."""
+        if config.atom_settings()["base_url"]:
+            task, images = _atom_task(messages)
+            if images:
+                try:
+                    return await self._atom_run(task, images)
+                except LLMError:
+                    pass  # connection error, 404/422, failed/budget/stopped run: use the local model
         body = {
             "model": self.model, "messages": messages, "max_tokens": max_tokens,
             "temperature": temperature,
@@ -75,6 +97,42 @@ class LLM:
 
     async def chat_json(self, messages, **kw):
         return extract_json(await self.chat(messages, **kw))
+
+    async def _atom_run(self, task: str, images) -> str:
+        """Upload the image, queue an AtomHealth agent run (agent_mode=require), poll until it ends."""
+        a = config.atom_settings()
+        base = a["base_url"]
+        headers = {"Authorization": f"Bearer {a['token']}"} if a["token"] else {}
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=a["timeout"]), headers=headers) as http:
+                upload_ids = []
+                for n, data_url in enumerate(images):
+                    async with http.post(f"{base}/api/uploads", json={"data_url": data_url, "name": f"meal{n}.jpg"}) as r:
+                        if r.status >= 300:
+                            raise LLMError(f"Atom upload failed {r.status}: {(await r.text())[:200]}")
+                        upload_ids.append((await r.json())["id"])
+                body = {"agent": a["agent"], "task": task, "images": upload_ids, "agent_mode": "require"}
+                async with http.post(f"{base}/api/agents/run", json=body) as r:
+                    if r.status >= 300:
+                        raise LLMError(f"Atom run rejected {r.status}: {(await r.text())[:200]}")
+                    run_id = (await r.json()).get("run_id")
+                if not run_id:
+                    raise LLMError("Atom returned no run_id")
+                while True:
+                    async with http.get(f"{base}/api/runs/{run_id}") as r:
+                        if r.status >= 300:
+                            raise LLMError(f"Atom run lookup failed {r.status}")
+                        run = (await r.json()).get("run") or {}
+                    st = run.get("status")
+                    if st not in ("queued", "running"):
+                        break
+                    await asyncio.sleep(a["poll"])
+        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError, ValueError) as e:
+            raise LLMError(f"Atom unavailable: {e}") from e
+        if st != "done":
+            raise LLMError(f"Atom run {st}: {run.get('error')}")
+        res = run.get("result")
+        return res if isinstance(res, str) else json.dumps(res)
 
     async def analyze_image(self, prompt: str, image: bytes, mime="image/jpeg", system=None, **kw):
         """Send one image + prompt; return parsed JSON."""
