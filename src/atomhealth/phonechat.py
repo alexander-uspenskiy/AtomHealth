@@ -35,6 +35,7 @@ MAX_PHOTO_BYTES = 4_000_000
 PARTIAL_TTL = 900      # seconds an incomplete photo is kept
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _SEEN = 1000
+RESEND_LAST = 5        # bot messages re-sent when the phone pings (self-heals a missed edit)
 
 
 class PhoneChat:
@@ -51,6 +52,7 @@ class PhoneChat:
         self._seen = collections.OrderedDict()
         self._versions = collections.OrderedDict()
         self._created = collections.OrderedDict()
+        self._recent = collections.OrderedDict()  # "m<mid>" -> latest data of the last few bot messages (re-sent on ping)
         self._update_id = 0
         self.problems = 0
         self.ai_ok = None                   # reachability of the AI backend, kept fresh by the app (None = unknown)
@@ -78,6 +80,9 @@ class PhoneChat:
             elif kind == "callback":
                 self._callback(d)
             elif kind == "ping":
+                # a missed edit would otherwise stay missed: replay the newest version of the last few messages
+                for rsid, rdata in list(self._recent.items()):
+                    self._emit(rsid, rdata)
                 self._emit("presence", {"ts": int(time.time()), "ai": self.ai_ok})
             else:
                 self.problems += 1
@@ -199,6 +204,11 @@ class PhoneChat:
         self._versions[sid] = v
         while len(self._versions) > _SEEN:
             self._versions.popitem(last=False)
+        if sid.startswith("m"):
+            self._recent.pop(sid, None)
+            self._recent[sid] = data
+            while len(self._recent) > RESEND_LAST:
+                self._recent.popitem(last=False)
         self.out.append({"v": ENVELOPE_VERSION, "type": "chat_out", "op": "upsert", "id": sid, "version": v,
                          "updated_at": int(now), "data": data})
         self.on_out()
