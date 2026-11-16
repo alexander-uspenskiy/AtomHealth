@@ -89,9 +89,20 @@ class PhoneChat:
         self.updates.append({"update_id": self._update_id, **u})
         self._event.set()
 
-    def _msg(self, **extra):
+    @staticmethod
+    def _sent_at(d):
+        """When the phone says the message was written (a delayed delivery keeps its own time).
+        Ignored if missing, not a number, in the future, or older than a week."""
+        now = int(time.time())
+        v = d.get("sent_at") if isinstance(d, dict) else None
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return now
+        v = int(v)
+        return v if now - 7 * 86400 <= v <= now else now
+
+    def _msg(self, sent_at=None, **extra):
         return {"message_id": self._next_mid(), "chat": {"id": CHAT_ID, "type": "private"},
-                "from": {"id": PHONE_UID, "first_name": "Phone"}, "date": int(time.time()), **extra}
+                "from": {"id": PHONE_UID, "first_name": "Phone"}, "date": sent_at or int(time.time()), **extra}
 
     @staticmethod
     def _clean(text, limit=2000):
@@ -100,7 +111,7 @@ class PhoneChat:
     def _text(self, d):
         text = self._clean(d.get("text"))
         if text:
-            self._push_update(message=self._msg(text=text))
+            self._push_update(message=self._msg(sent_at=self._sent_at(d), text=text))
 
     def _chunk(self, d):
         pid, idx, n = d["photo_id"], d["idx"], d["n"]
@@ -142,7 +153,7 @@ class PhoneChat:
                 extra["caption"] = caption
             if group:
                 extra["media_group_id"] = group
-            self._push_update(message=self._msg(**extra))
+            self._push_update(message=self._msg(sent_at=self._sent_at(d), **extra))
 
     def _callback(self, d):
         data, mid = d["data"], d["msg_id"]

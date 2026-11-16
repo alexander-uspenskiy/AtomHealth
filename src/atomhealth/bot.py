@@ -313,21 +313,23 @@ class TelegramBot:
             fid = m["document"]["file_id"]
         caption = (m.get("caption") or text).strip()
         gid = m.get("media_group_id")
+        sent = m.get("date") if isinstance(m.get("date"), int) else None   # when it was SENT, not when it reached us
         if fid and gid:
             key = (chat_id, gid)
-            a = self._albums.setdefault(key, {"files": [], "caption": "", "timer": None})
+            a = self._albums.setdefault(key, {"files": [], "caption": "", "timer": None, "ts": sent})
             a["files"].append(fid)
+            a["ts"] = min(filter(None, [a["ts"], sent]), default=None)
             a["caption"] = a["caption"] or caption
             if a["timer"]:
                 a["timer"].cancel()
             a["timer"] = asyncio.get_running_loop().call_later(ALBUM_WAIT, lambda: self._spawn(self._flush_album(key)))
         elif fid or caption:
-            await self._process(chat_id, [fid] if fid else [], caption)
+            await self._process(chat_id, [fid] if fid else [], caption, ts=sent)
 
     async def _flush_album(self, key):
         a = self._albums.pop(key, None)
         if a:
-            await self._process(key[0], a["files"], a["caption"])
+            await self._process(key[0], a["files"], a["caption"], ts=a.get("ts"))
 
     def welcome_text(self, name=None):
         """Greeting with today's calorie limit, macros and what is left."""
@@ -594,7 +596,7 @@ class TelegramBot:
         if chat_id and msg_id:
             await self._refresh_meal_message(chat_id, msg_id, mid)
 
-    async def _process(self, chat_id, file_ids, caption):
+    async def _process(self, chat_id, file_ids, caption, ts=None):
         async with self._lock(chat_id):
             note = await self._send(chat_id, "🔍 Analysing…")
             await self.api.call("sendChatAction", chat_id=chat_id, action="typing")
@@ -611,7 +613,7 @@ class TelegramBot:
                         return await self._edit(chat_id, note["message_id"],
                                                 "🤔 I couldn't find any food there. Send a photo of your meal "
                                                 "or describe what you ate.")
-                    meal_id = food.store_meal(self.db, analysis, photos=photos, caption=caption, source=self.source)
+                    meal_id = food.store_meal(self.db, analysis, photos=photos, caption=caption, ts=ts, source=self.source)
                 if extending and s.get("msg_id"):  # old message loses its buttons, the new one carries them
                     try:
                         await self._edit(chat_id, s["msg_id"], "↪️ Updated below.")

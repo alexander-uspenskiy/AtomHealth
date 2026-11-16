@@ -55,7 +55,8 @@ public enum ChatWire {
     static func uid() -> String { UUID().uuidString.lowercased() }
 
     public static func text(_ s: String) -> LocalChange {
-        LocalChange(type: .chatIn, id: "t-\(uid())", op: .upsert, data: .object(["kind": .string("text"), "text": .string(s)]))
+        LocalChange(type: .chatIn, id: "t-\(uid())", op: .upsert, data: .object(["kind": .string("text"), "text": .string(s),
+            "sent_at": .number(Date().timeIntervalSince1970.rounded())]))
     }
 
     /// Chunks of one photo, then (in the same queue, so in order) nothing else: `message` ties them together.
@@ -70,7 +71,8 @@ public enum ChatWire {
 
     public static func message(text: String, photoIDs: [String]) -> LocalChange {
         LocalChange(type: .chatIn, id: "m-\(uid())", op: .upsert, data: .object([
-            "kind": .string("message"), "text": .string(text), "photos": .array(photoIDs.map(JSONValue.string))]))
+            "kind": .string("message"), "text": .string(text), "photos": .array(photoIDs.map(JSONValue.string)),
+            "sent_at": .number(Date().timeIntervalSince1970.rounded())]))
     }
 
     public static func ping() -> LocalChange {
