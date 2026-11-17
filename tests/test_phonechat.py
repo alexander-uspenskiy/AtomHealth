@@ -215,3 +215,28 @@ def test_ping_is_answered_at_once_with_presence_and_ai_state():
     assert a["id"] == b["id"] == "presence" and b["version"] > a["version"]
     assert a["data"]["ai"] is None and b["data"]["ai"] is False and abs(b["data"]["ts"] - time.time()) < 5
     assert not c.updates                                          # a ping never reaches the bot
+
+
+def test_ping_replays_the_latest_version_of_recent_messages():
+    c = make_chat()
+    mids = [c.send(f"m{i}") for i in range(phonechat.RESEND_LAST + 2)]
+    c.edit(mids[-1], "final")
+    c.drain()
+    c.ingest(e("pg9", kind="ping"))
+    out = c.drain()
+    ids = [x["id"] for x in out]
+    assert ids[-1] == "presence" and len(ids) == phonechat.RESEND_LAST + 1
+    assert f"m{mids[0]}" not in ids and f"m{mids[-1]}" in ids        # only the newest few
+    last = next(x for x in out if x["id"] == f"m{mids[-1]}")
+    assert last["data"]["text"] == "final" and last["data"]["edited"] is True
+    assert "typing" not in ids and "toast" not in ids
+
+
+def test_relay_backoff_is_capped_while_chat_is_on():
+    chat = make_chat()
+    a = relay.RelayAgent(db, appmod.kv_get, appmod.kv_set, chat=chat)
+    b = relay.RelayAgent(db, appmod.kv_get, appmod.kv_set)
+    a._failures = b._failures = 6
+    assert a._backoff(False) == a._backoff(True) == relay.CHAT_BACKOFF_MAX
+    assert b._backoff(False) == 900 and b._backoff(True) == 300
+    assert a.status()["failures"] == 6 and "next_retry" in a.status()

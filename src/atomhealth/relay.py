@@ -12,6 +12,7 @@ import base64
 import getpass
 import hashlib
 import json
+import logging
 import os
 import secrets
 import sys
@@ -29,6 +30,8 @@ AAD_PREFIX = b"atomhealth-v1|"
 PUSH_BATCH = 50          # relay limit
 PULL_PAGE = 20           # a page of photo chunks stays ~1.4 MB: keeps the Worker inside its 10 ms CPU budget
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
+CHAT_BACKOFF_MAX = 30    # seconds: longest wait after a failed cycle while the phone chat is on (someone is waiting)
+log = logging.getLogger(__name__)
 
 
 class RelayError(Exception):
@@ -177,7 +180,7 @@ class RelayAgent:
         self._session = session
         self._lock = asyncio.Lock()
         self._failures = 0
-        self.state = {"last_ok": None, "last_error": None, "pulled": 0, "pushed": 0, "bad": 0}
+        self.state = {"last_ok": None, "last_error": None, "next_retry": None, "pulled": 0, "pushed": 0, "bad": 0}
 
     def _creds(self):
         cfg = self.kv_get("relay") or {}
@@ -200,7 +203,8 @@ class RelayAgent:
         cfg = self.kv_get("relay") or {}
         return {"configured": self.configured, "url": cfg.get("url"), "device_id": cfg.get("device_id"),
                 "cursor": self.kv_get("relay_cursor", 0), "pushed_seq": self.kv_get("relay_pushed_seq", 0),
-                "pending": max(0, sync.outbox_max(self.db) - self.kv_get("relay_pushed_seq", 0)), **self.state}
+                "pending": max(0, sync.outbox_max(self.db) - self.kv_get("relay_pushed_seq", 0)),
+                "failures": self._failures, **self.state}
 
     async def cycle(self, chat_only=False):
         """One pull + push (chat_only: skip the dashboard snapshot and the health outbox, so a fast chat poll stays
@@ -238,6 +242,7 @@ class RelayAgent:
                 for e in chat:
                     if self.chat:
                         self.chat.ingest(e)
+                sync.log(self.db, "pull", "chat", len(chat), "ok")
             if envs:
                 counts = sync.apply_batch(self.db, envs)
                 total += counts["applied"] + counts["merged"]
@@ -285,6 +290,8 @@ class RelayAgent:
         except BaseException:
             self.chat.requeue(envs)
             raise
+        if total:
+            sync.log(self.db, "push", "chat", total, "ok")
         return total
 
     async def _push_snapshot(self, client, device_id, key):
@@ -306,6 +313,19 @@ class RelayAgent:
         self.state["pushed"] += 1
         return 1
 
+    def _backoff(self, unexpected):
+        """Seconds to wait after a failed cycle. With the phone chat on someone is waiting for an answer, so the wait
+        is capped at CHAT_BACKOFF_MAX; the long waits stay for background-only sync."""
+        wait = 300 if unexpected else min(900, 15 * 2 ** min(self._failures, 6))
+        return min(wait, CHAT_BACKOFF_MAX) if self.chat else wait
+
+    def _log_error(self, detail):
+        log.warning("relay cycle failed (%d in a row): %s", self._failures, detail)
+        try:
+            sync.log(self.db, "cycle", None, 0, "error", detail)
+        except Exception:  # logging must never kill the loop
+            pass
+
     async def run(self):
         """Background loop: a full sync on a timer (sooner when local changes appear), chat-only polls in between
         while the phone chat is on, back off on errors."""
@@ -317,16 +337,19 @@ class RelayAgent:
                 if full:
                     last_full = time.monotonic()
                 self._failures = 0
+                self.state["next_retry"] = None
                 wait = self.chat_interval if self.chat else self.interval
             except RelayError as e:
                 self._failures += 1
                 self.state["last_error"] = str(e)
-                sync.log(self.db, "cycle", None, 0, "error", str(e))
-                wait = min(900, 15 * 2 ** min(self._failures, 6))
+                self._log_error(str(e))
+                wait = self._backoff(unexpected=False)
             except Exception as e:  # never let the loop die
                 self._failures += 1
                 self.state["last_error"] = f"{type(e).__name__}: {e}"
-                wait = 300
+                self._log_error(self.state["last_error"])
+                wait = self._backoff(unexpected=True)
+            self.state["next_retry"] = int(time.time() + wait) if self._failures else None
             deadline = time.monotonic() + wait
             while time.monotonic() < deadline:
                 try:
