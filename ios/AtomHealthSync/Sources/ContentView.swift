@@ -110,15 +110,19 @@ struct AppTabBar: View {
         return Button { model.tab = .chat } label: {
             VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 28)).foregroundStyle(.white)
-                        .frame(width: 66, height: 66)
-                        .background(LinearGradient(colors: [Color(hex: 0x4F46E5), Color(hex: 0x7C3AED)],
-                                                   startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
-                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: on ? 5 : 3))
-                        .shadow(color: Theme.accent.opacity(on ? 0.55 : 0.35), radius: on ? 12 : 8, y: 4)
+                    // Not on Chat: the raised gradient circle. On Chat it would sit over the message field, so it
+                    // shrinks to a flat neutral icon that stays inside the bar.
+                    Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: on ? 18 : 28))
+                        .foregroundStyle(on ? Color.secondary : Color.white)
+                        .frame(width: on ? 40 : 66, height: on ? 40 : 66)
+                        .background(on ? AnyShapeStyle(Color(.tertiarySystemFill))
+                                       : AnyShapeStyle(LinearGradient(colors: [Color(hex: 0x4F46E5), Color(hex: 0x7C3AED)],
+                                                                      startPoint: .topLeading, endPoint: .bottomTrailing)), in: Circle())
+                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: on ? 0 : 3))
+                        .shadow(color: on ? .clear : Theme.accent.opacity(0.35), radius: 8, y: 4)
                         .overlay(alignment: .bottomTrailing) {      // is the Mac there? (green / grey / orange / red)
                             TimelineView(.periodic(from: .now, by: 3)) { ctx in
-                                Circle().fill(model.chatStatus(at: ctx.date).color).frame(width: 18, height: 18)
+                                Circle().fill(model.chatStatus(at: ctx.date).color).frame(width: on ? 12 : 18, height: on ? 12 : 18)
                                     .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 3))
                             }
                             .offset(x: 1, y: 1).accessibilityHidden(true)
@@ -130,7 +134,7 @@ struct AppTabBar: View {
                             .accessibilityLabel("\(model.chat.unread) unread")
                     }
                 }
-                .offset(y: -18).padding(.bottom, -18)
+                .offset(y: on ? 0 : -18).padding(.bottom, on ? 0 : -18)
                 Text("Chat").font(.caption2.weight(.bold)).foregroundStyle(Theme.accent)
             }
             .frame(width: 96).contentShape(Rectangle())
