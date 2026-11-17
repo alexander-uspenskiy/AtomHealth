@@ -121,31 +121,14 @@ struct OverviewView: View {
         }
     }
 
-    private func coach(_ m: DashboardMath) -> some View {
-        let calc = m.coachCalculation()
+    /// Only the daily and the weekly advice (no answers to questions, no per-meal tips); no card when there is none.
+    @ViewBuilder private func coach(_ m: DashboardMath) -> some View {
         let a = m.s.advice
-        var items = a?.today ?? []
-        if let w = a?.week { items.append(w) }
-        return Card(title: "Coach", subtitle: "Advice for today from what you have eaten and your weight trend") {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Chip(text: "Calculation")
-                    Text("live, from \(calc.mealCount) saved meal\(calc.mealCount == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
-                }
-                Text(calc.headline).font(.subheadline.weight(.semibold))
-                Text(calc.detail).font(.footnote).foregroundStyle(.secondary)
+        let items = ((a?.today ?? []) + (a?.week.map { [$0] } ?? [])).filter { $0.kind == "day" || $0.kind == "week" }
+        if !items.isEmpty {
+            Card(title: "Coach", subtitle: nil) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, i in adviceView(i) }
             }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-            if (a?.removed ?? 0) > 0 {
-                Text("The daily advice was removed because your meals changed after it was written. Ask for a new one on the Mac.")
-                    .font(.footnote).foregroundStyle(.orange)
-            }
-            if items.isEmpty {
-                Text("No advice yet today. Ask for it on the Mac, or log meals in Telegram and a summary arrives in the evening.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
-            ForEach(Array(items.enumerated()), id: \.offset) { _, i in adviceView(i) }
         }
     }
 
@@ -156,7 +139,6 @@ struct OverviewView: View {
                 if let ts = i.ts { Text(Date(timeIntervalSince1970: ts).formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
                 if i.usedLlm == false { Text("· basic tips").font(.caption).foregroundStyle(.secondary) }
             }
-            if let q = i.question, !q.isEmpty { Text("“\(q)”").font(.footnote).italic().foregroundStyle(.secondary) }
             if let h = i.headline { Text(h).font(.subheadline.weight(.semibold)) }
             if let t = i.text { Text(t).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
         }
