@@ -170,9 +170,101 @@ func botOut(_ mid: Int, _ text: String, buttons: [[(String, String)]] = [], edit
     await s.clear()
     let cleared = await s.snapshot()
     #expect(cleared.messages.isEmpty && !FileManager.default.fileExists(atPath: s.mediaURL(b).path))
-    for i in 0..<(ChatStore.maxMessages + 25) { await s.apply(botOut(i + 1, "m\(i)")) }
-    let snap = await s.snapshot()
-    #expect(snap.messages.count == ChatStore.maxMessages && snap.messages.last?.text == "m\(ChatStore.maxMessages + 24)")
+}
+
+@Test func hardCapDropsTheOldestMessagesAndTheirPhotos() async {
+    let s = ChatStore(directory: tempDir(), maxMessages: 30)
+    let p = await s.savePhoto(jpeg: Data([1]), thumbnail: nil)
+    await s.addUser(text: "oldest", photos: [p])
+    for i in 0..<40 { await s.apply(botOut(i + 1, "m\(i)")) }
+    var snap = await s.snapshot()
+    #expect(snap.total == 30 && snap.messages.last?.text == "m39")
+    #expect(!FileManager.default.fileExists(atPath: s.mediaURL(p).path))
+    for _ in 0..<5 { snap = await s.loadEarlier() }
+    #expect(snap.messages.count == 30 && snap.messages.first?.text == "m10" && !snap.hasEarlier)
+}
+
+@Test func onlyTheNewestPageIsLoadedAndEarlierOnesComeTenAtATime() async {
+    let s = ChatStore(directory: tempDir())
+    for i in 0..<35 { await s.apply(botOut(i + 1, "m\(i)", ts: 1_700_000_000 + i)) }
+    var snap = await s.snapshot()
+    #expect(snap.messages.count == 10 && snap.messages.first?.text == "m25" && snap.messages.last?.text == "m34")
+    #expect(snap.total == 35 && snap.hasEarlier)
+    snap = await s.loadEarlier()
+    #expect(snap.messages.count == 20 && snap.messages.first?.text == "m15" && snap.messages.last?.text == "m34")
+    snap = await s.loadEarlier(); snap = await s.loadEarlier()
+    #expect(snap.messages.count == 35 && snap.messages.first?.text == "m0" && !snap.hasEarlier)
+    await s.resetWindow()
+    #expect(await s.snapshot().messages.count == 10)
+    await s.apply(botOut(36, "m35"))                                    // a new message keeps the order and the window
+    let again = await s.snapshot()
+    #expect(again.messages.last?.text == "m35" && again.messages.count == 10)
+}
+
+@Test func editsInPlaceKeepTheirPositionAndUnreadCountsOnlyBotMessages() async {
+    let s = ChatStore(directory: tempDir())
+    await s.apply(botOut(1, "first")); await s.apply(botOut(2, "second"))
+    await s.apply(botOut(1, "first, edited", edited: true, version: 2))
+    var snap = await s.snapshot()
+    #expect(snap.messages.map(\.text) == ["first, edited", "second"] && snap.unread == 2)
+    await s.markRead(now: Date(timeIntervalSince1970: 2_000_000_000))
+    await s.addUser(text: "hi", photos: [])
+    snap = await s.snapshot()
+    #expect(snap.unread == 0 && snap.messages.last?.delivery == .sending)
+    await s.markSent()
+    #expect(await s.snapshot().messages.last?.delivery == .sent)
+    await s.apply(botOut(3, "answer"))
+    #expect(await s.snapshot().messages[2].delivery == .answered)
+}
+
+@Test func aChatSavedByTheOldBuildIsImportedOnce() async throws {
+    let dir = tempDir()
+    let old = LegacyJSON(messages: [ChatMessage(id: "m1", role: .bot, text: "old", date: Date(timeIntervalSince1970: 1_700_000_000), mid: 1, delivery: .answered)], readAt: 5)
+    try JSONEncoder().encode(old).write(to: dir.appendingPathComponent("chat.json"))
+    let s = ChatStore(directory: dir)
+    #expect(await s.snapshot().messages.map(\.text) == ["old"])
+    #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("chat.json").path))
+    #expect(await ChatStore(directory: dir).snapshot().messages.count == 1)       // not imported twice
+}
+private struct LegacyJSON: Codable { var messages: [ChatMessage]; var readAt: Double }
+
+// MARK: storage forecast
+@Test func forecastMeasuresRecentGrowthAndWarnsBeforeTheLimit() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let day = 86_400.0
+    // 60 MB used, 14 MB added over the last 14 days (1 MB/day): 90 MB left = 90 days: fine
+    var r = ChatStorageReport(messages: 900, usedBytes: 60_000_000, recentBytes: 14_000_000, oldest: now.addingTimeInterval(-90 * day), now: now)
+    #expect(r.bytesPerDay == 1_000_000 && r.daysLeft == 90 && r.advice == .none)
+    // the same chat growing 3 MB/day: 30 days left: suggest a clean-up
+    r.recentBytes = 42_000_000
+    #expect(r.daysLeft == 30 && r.advice == .soon)
+    // 85 % of the budget warns whatever the pace
+    r = ChatStorageReport(messages: 10, usedBytes: 130_000_000, recentBytes: 0, oldest: now.addingTimeInterval(-90 * day), now: now)
+    #expect(r.daysLeft == nil && r.advice == .soon)
+    #expect(ChatStorageReport(messages: 1, usedBytes: 150_000_000, recentBytes: 1, oldest: now, now: now).advice == .full)
+    // a young chat measures growth over its own age (not 14 days) but stays quiet while tiny
+    let young = ChatStorageReport(messages: 5, usedBytes: 3_000_000, recentBytes: 3_000_000, oldest: now.addingTimeInterval(-1 * day), now: now)
+    #expect(young.bytesPerDay == 3_000_000 && young.advice == .none)
+    #expect(ChatStorageReport(messages: 0, usedBytes: 0, recentBytes: 0, oldest: nil, now: now).daysLeft == nil)
+    #expect(r.summary.hasPrefix("Chat uses ") && r.summary.contains("130"))
+}
+
+@Test func storageReportAndCleanupCountPhotosAndFreeThem() async {
+    let s = ChatStore(directory: tempDir())
+    let big = Data(repeating: 7, count: 200_000)
+    let p = await s.savePhoto(jpeg: big, thumbnail: Data(repeating: 1, count: 20_000))
+    await s.addUser(text: "photo", photos: [p])
+    await s.apply(botOut(1, "old answer", ts: Int(Date().timeIntervalSince1970) - 40 * 86_400))
+    let before = await s.storageReport()
+    #expect(before.messages == 2 && before.usedBytes >= 220_000 && before.recentBytes >= 220_000)
+    let offer = await s.cleanupOffer(olderThanDays: 30)
+    #expect(offer.messages == 1 && offer.bytes > 0 && offer.bytes < 5_000)         // text only: the photo is recent
+    let done = await s.deleteOlder(thanDays: 30)
+    let left = await s.snapshot().total
+    #expect(done == offer && left == 1)
+    let rest = await s.deleteOlder(thanDays: 0)
+    let report = await s.storageReport()
+    #expect(rest.messages == 1 && report.usedBytes == 0 && !FileManager.default.fileExists(atPath: s.mediaURL(p).path))
 }
 
 // MARK: through the sync engine

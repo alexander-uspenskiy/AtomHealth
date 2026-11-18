@@ -44,9 +44,10 @@ struct ChatView: View {
     @State private var viewer: ViewerRequest?
     @State private var toast: String?
     @State private var tapped: [String: Date] = [:]
-    /// Only the newest messages are drawn; pulling down at the top reveals earlier ones, a page at a time.
-    @State private var shown = ChatView.pageSize
-    static let pageSize = 10
+    @State private var loadingEarlier = false
+    @State private var pagingArmed = false          // ignore the top row while the chat is still laying out and scrolling to the end
+    @State private var showStorage = false
+    @State private var bannerDismissed = false
     @FocusState private var focused: Bool
 
     private var chat: ChatSnapshot { model.chat }
@@ -62,6 +63,7 @@ struct ChatView: View {
                         Text(note).font(.caption).foregroundStyle(.secondary).padding(.vertical, 4)
                     }
                 }
+                storageBanner
                 suggestions
                 tray
                 composer
@@ -79,6 +81,7 @@ struct ChatView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { showCommands = true } label: { Label("Commands", systemImage: "slash.circle") }
+                        Button { showStorage = true } label: { Label("Chat storage", systemImage: "internaldrive") }
                         Button(role: .destructive) { confirmClear = true } label: { Label("Clear chat on this phone", systemImage: "trash") }
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
@@ -87,6 +90,7 @@ struct ChatView: View {
                 Button("Clear chat", role: .destructive) { Task { await model.clearChat() } }
             } message: { Text("Meals and data on your Mac are not affected.") }
             .sheet(isPresented: $showCommands) { commandsSheet }
+            .sheet(isPresented: $showStorage) { StorageSheet(model: model) }
             .fullScreenCover(item: $viewer) { PhotoViewer(request: $0) }
             .fullScreenCover(isPresented: $showCamera) { CameraPicker { addPhotos([$0]) }.ignoresSafeArea() }
             .photosPicker(isPresented: $showPicker, selection: $pickerItems,
@@ -94,7 +98,8 @@ struct ChatView: View {
             .onChange(of: pickerItems) { _, items in loadPicked(items) }
             .onChange(of: chat.toast) { _, t in if let t { flash(t) } }
             .onChange(of: chat.messages.count) { _, _ in Task { await model.markChatRead() } }
-            .onChange(of: chat.messages.isEmpty) { _, empty in if empty { shown = Self.pageSize } }
+            .onChange(of: chat.total) { _, _ in Task { await model.refreshChatStorage() } }
+            .task { await model.openChat(); try? await Task.sleep(for: .milliseconds(700)); pagingArmed = true }
             .task(id: scenePhase) { await poll() }
         }
     }
@@ -164,12 +169,13 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: 2) {
                     if chat.messages.isEmpty { emptyState }
-                    if earlier > 0 {
-                        Text("Pull down for \(min(earlier, Self.pageSize)) earlier message\(min(earlier, Self.pageSize) == 1 ? "" : "s")")
-                            .font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
+                    if chat.hasEarlier {
+                        // reaching the top of what is loaded brings in the next 10 (the view keeps its place)
+                        ProgressView().controlSize(.small).padding(.vertical, 10).id("earlier")
+                            .onAppear { loadEarlier(proxy) }
                     }
-                    ForEach(Array(visible.enumerated()), id: \.element.id) { i, m in
-                        if i == 0 || !Calendar.current.isDate(m.date, inSameDayAs: visible[i - 1].date) { DaySeparator(date: m.date) }
+                    ForEach(Array(chat.messages.enumerated()), id: \.element.id) { i, m in
+                        if i == 0 || !Calendar.current.isDate(m.date, inSameDayAs: chat.messages[i - 1].date) { DaySeparator(date: m.date) }
                         MessageBubble(message: m, model: model, tapsDisabled: isBusy(m), onPhoto: { viewer = $0 },
                                       onButton: { b in press(m, b) }, onDelete: { Task { await model.deleteChatMessage(m.id) } })
                             .id(m.id)
@@ -180,13 +186,6 @@ struct ChatView: View {
                 .padding(.horizontal, 12).padding(.top, 4)
             }
             .defaultScrollAnchor(.bottom)
-            .scrollBounceBehavior(.always)
-            .refreshable {
-                guard earlier > 0, let top = visible.first?.id else { return }
-                shown += Self.pageSize
-                try? await Task.sleep(for: .milliseconds(80))
-                proxy.scrollTo(top, anchor: .top)             // stay where you were: the new ones appear above
-            }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: chat.messages.last?.id) { _, _ in withAnimation { proxy.scrollTo("end", anchor: .bottom) } }
             .onChange(of: chat.messages.last?.text) { _, _ in withAnimation { proxy.scrollTo("end", anchor: .bottom) } }
@@ -195,8 +194,17 @@ struct ChatView: View {
         }
     }
 
-    private var visible: [ChatMessage] { Array(chat.messages.suffix(shown)) }   // a real Array: slice indices do not start at 0
-    private var earlier: Int { max(0, chat.messages.count - shown) }
+    private func loadEarlier(_ proxy: ScrollViewProxy) {
+        guard pagingArmed, chat.hasEarlier, !loadingEarlier, let top = chat.messages.first?.id else { return }
+        loadingEarlier = true
+        Task {
+            await model.loadEarlierChat()
+            try? await Task.sleep(for: .milliseconds(60))
+            proxy.scrollTo(top, anchor: .top)                // stay where you were: the older ones appear above
+            try? await Task.sleep(for: .milliseconds(250))   // and do not fire again until the view has settled
+            loadingEarlier = false
+        }
+    }
 
     /// A button stays disabled from the tap until the bot edits that message (or 20 s pass).
     private func isBusy(_ m: ChatMessage) -> Bool {
@@ -226,6 +234,30 @@ struct ChatView: View {
             }
         }
         .padding(.horizontal, 24).padding(.vertical, 60).frame(maxWidth: .infinity)
+    }
+
+    // MARK: storage
+    /// Shown when the forecast says the archive will pass its limit soon (or already has): one tap cleans up.
+    @ViewBuilder private var storageBanner: some View {
+        if !bannerDismissed, let r = model.chatStorage, r.advice != .none {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(r.summary).font(.caption).foregroundStyle(.primary)
+                HStack {
+                    if let o = model.chatCleanup {
+                        Button("Delete \(o.messages) older than \(o.days) days (\(ChatStorageReport.size(o.bytes)))") {
+                            Task { await model.cleanChat(olderThanDays: o.days) }
+                        }
+                        .buttonStyle(.borderedProminent).controlSize(.small).tint(r.advice == .full ? .red : Theme.accent)
+                    }
+                    Button("More…") { showStorage = true }.buttonStyle(.bordered).controlSize(.small)
+                    Spacer()
+                    Button { bannerDismissed = true } label: { Image(systemName: "xmark") }.foregroundStyle(.secondary)
+                        .accessibilityLabel("Dismiss")
+                }
+            }
+            .padding(10).background((r.advice == .full ? Color.red : Color.orange).opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 12).padding(.bottom, 4)
+        }
     }
 
     // MARK: composer
@@ -385,4 +417,47 @@ extension ChatStatus {
         case .online(let ai): ai == false ? .orange : Theme.good
         }
     }
+}
+
+/// Chat storage: what is used, the forecast, and clean-up by age.
+struct StorageSheet: View {
+    let model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirm: Int?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let r = model.chatStorage {
+                    Section {
+                        row("Used", ChatStorageReport.size(r.usedBytes))
+                        row("Messages", "\(r.messages)")
+                        row("Limit", ChatStorageReport.size(ChatStorageReport.budgetBytes))
+                        ProgressTrack(value: r.fraction, color: r.advice == .none ? Theme.accent : (r.advice == .full ? .red : .orange))
+                        if r.bytesPerDay >= 1_000 { row("Recent growth", "\(ChatStorageReport.size(Int(r.bytesPerDay))) / day") }
+                        if let d = r.daysLeft, r.bytesPerDay >= 1_000 { row("Limit reached in", d == 0 ? "now" : "~\(d) days") }
+                    } footer: { Text("Photos take almost all of it. Meals and data on your Mac are not affected.") }
+                    Section("Delete old messages") {
+                        ForEach([7, 30, 90], id: \.self) { days in
+                            Button("Older than \(days) days") { confirm = days }.disabled(isEmpty(days))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Chat storage").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .task { await model.refreshChatStorage() }
+            .confirmationDialog("Delete messages older than \(confirm ?? 0) days?", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
+                                titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { if let d = confirm { Task { await model.cleanChat(olderThanDays: d) } }; confirm = nil }
+            } message: { Text("With their photos, from this phone only. This cannot be undone.") }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func row(_ k: String, _ v: String) -> some View {
+        HStack { Text(k); Spacer(); Text(v).foregroundStyle(.secondary).monospacedDigit() }
+    }
+
+    private func isEmpty(_ days: Int) -> Bool { (model.chatStorage?.oldest).map { Date().timeIntervalSince($0) < Double(days) * 86_400 } ?? true }
 }

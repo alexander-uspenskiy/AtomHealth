@@ -29,6 +29,9 @@ final class AppModel {
     var health: HealthSummary?
     /// The conversation with the Mac's bot (the Chat tab); kept on disk like the dashboard.
     var chat = ChatSnapshot()
+    /// How much room the chat archive takes and what a clean-up would free (see `ChatStorageReport`).
+    var chatStorage: ChatStorageReport?
+    var chatCleanup: ChatCleanupOffer?
     /// The oldest ping the Mac has not answered yet (or the last answered one): drives "Checking Mac…" / "Mac not responding".
     var pingSentAt: Date?
     var relayOK: Bool { config != nil && status != "Sync failed" && !status.hasPrefix("Device revoked") }
@@ -190,6 +193,28 @@ final class AppModel {
         guard config != nil, let mid = message.mid else { return }
         await store.enqueue(ChatWire.callback(data: button.data, messageID: mid))
         await syncNow(health: false)
+    }
+
+    /// Opening the chat shows the newest page only; older messages are paged in as the user scrolls up.
+    func openChat() async {
+        await chatStore.resetWindow(); chat = await chatStore.snapshot(); await refreshChatStorage()
+    }
+    func loadEarlierChat() async { chat = await chatStore.loadEarlier() }
+
+    func refreshChatStorage() async {
+        let report = await chatStore.storageReport()
+        chatStorage = report
+        var offer: ChatCleanupOffer?
+        for days in [30, 14, 7] {                       // the gentlest clean-up that frees something
+            let o = await chatStore.cleanupOffer(olderThanDays: days)
+            if o.messages > 0 { offer = o; break }
+        }
+        chatCleanup = offer
+    }
+
+    func cleanChat(olderThanDays days: Int) async {
+        await chatStore.deleteOlder(thanDays: days)
+        chat = await chatStore.snapshot(); await refreshChatStorage()
     }
 
     func markChatRead() async { await chatStore.markRead(); chat = await chatStore.snapshot() }

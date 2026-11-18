@@ -95,7 +95,10 @@ public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
 }
 
 public struct ChatSnapshot: Equatable, Sendable {
+    /// The newest messages only (a window of the archive); `total` is how many exist, so `hasEarlier` can be asked.
     public var messages: [ChatMessage] = []
+    public var total = 0
+    public var hasEarlier: Bool { total > messages.count }
     public var typingUntil: Date?
     public var toast: String?
     public var unread = 0
