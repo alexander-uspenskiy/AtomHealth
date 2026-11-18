@@ -105,8 +105,34 @@ struct AppTabBar: View {
         .buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    private var chat: some View {
-        let on = model.tab == .chat
+    /// On the Chat screen itself the button is a small plain item like its neighbours (a big gradient circle there only
+    /// crowds the message field); on every other screen it is the raised round button.
+    @ViewBuilder private var chat: some View {
+        if model.tab == .chat { compactChat } else { raisedChat }
+    }
+
+    private var compactChat: some View {
+        Button { model.tab = .chat } label: {
+            VStack(spacing: 3) {
+                Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 22)).frame(height: 28)
+                    .overlay(alignment: .bottomTrailing) {          // is the Mac there? (green / grey / orange / red)
+                        TimelineView(.periodic(from: .now, by: 3)) { ctx in
+                            Circle().fill(model.chatStatus(at: ctx.date).color).frame(width: 9, height: 9)
+                                .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 1.5))
+                        }
+                        .offset(x: 3, y: 1).accessibilityHidden(true)
+                    }
+                Text("Chat").font(.caption2.weight(.bold))
+            }
+            .foregroundStyle(Color.secondary)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).accessibilityLabel("Chat").accessibilityAddTraits(.isSelected)
+    }
+
+    private var raisedChat: some View {
+        let on = false
         return Button { model.tab = .chat } label: {
             VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
