@@ -299,3 +299,22 @@ struct ChatOnlySink: InboundSink {
     let old = #"{"id":"m9","role":"bot","text":"x","buttons":[],"date":0,"edited":false,"photos":[],"delivery":"answered"}"#
     #expect(try JSONDecoder().decode(ChatMessage.self, from: Data(old.utf8)).visuals == nil)
 }
+
+@Test func chartsRingsAndTargetsAreParsedAndBadOnesDropped() async {
+    let s = ChatStore(directory: tempDir())
+    func pt(_ l: String, _ v: Double) -> JSONValue { .object(["label": .string(l), "value": .number(v)]) }
+    var env = botOut(2, "Week")
+    env.data = .object(["mid": .number(2), "text": .string("Week"), "ts": .number(1_700_000_000), "visuals": .array([
+        .object(["type": .string("ring"), "label": .string("Calories"), "value": .number(500), "max": .number(2000), "status": .string("ok")]),
+        .object(["type": .string("bars"), "label": .string("Steps"), "points": .array([pt("Mon", 4000), pt("Tue", 9000)]), "target": .number(8000)]),
+        .object(["type": .string("line"), "label": .string("Weight"), "unit": .string("kg"), "points": .array([pt("1", 80), pt("2", 79.5), .object(["label": .string("bad")])])]),
+        .object(["type": .string("bars"), "label": .string("one point"), "points": .array([pt("a", 1)])])])])
+    await s.apply(env)
+    let v = await s.snapshot().messages[0].visuals ?? []
+    #expect(v.map(\.kind) == [.ring, .bars, .line])
+    #expect(v[0].fraction == 0.25 && v[1].target == 8000 && v[1].points.count == 2 && v[2].points.count == 2 && v[2].unit == "kg")
+    let enc = try! JSONEncoder().encode(v), back = try! JSONDecoder().decode([ChatVisual].self, from: enc)
+    #expect(back == v)
+    let oldGauge = #"[{"label":"Calories","value":1,"max":2,"unit":"kcal"}]"#      // saved by the first build: no kind
+    #expect(try! JSONDecoder().decode([ChatVisual].self, from: Data(oldGauge.utf8)).first?.kind == .gauge)
+}

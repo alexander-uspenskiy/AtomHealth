@@ -11,7 +11,8 @@ Telegram, exchanges end-to-end encrypted envelopes with the phone through the re
         "ping"      {}                                      "are you there?": answered at once with "presence"
     Mac -> phone   type "chat_out"  id = "m<message_id>" (an upsert with a higher version is an edit)
         data {mid, text (Telegram-HTML subset), buttons [[{text, data}]], ts, visuals (optional)}
-        visuals: [{"type": "gauge", label, value, max, unit, status?: "ok"|"warn"|"over"}] drawn above the text by the app;
+        visuals: gauge/ring {label, value, max, unit, status?: ok|warn|over}, bars/line {label, unit, points: [{label, value}],
+        target?}: drawn above the text by the app (see visuals.py);
         Telegram never sees them and older apps ignore them, so the text always says the same thing.
         id "typing": data {typing_until}      id "toast": data {toast}
         id "presence": data {ts, ai}   the answer to a ping; ai = is the AI backend reachable (true/false/null=unknown)
@@ -26,6 +27,7 @@ import collections
 import re
 import time
 
+from . import visuals as visuals_mod
 from .sync import ENVELOPE_VERSION
 
 CHAT_ID = 1            # the one private chat with the phone
@@ -223,20 +225,7 @@ class PhoneChat:
 
     @staticmethod
     def _visuals(visuals):
-        """Only well-formed gauges, at most 8: the phone draws whatever arrives, so keep it small and sane."""
-        out = []
-        for v in visuals or []:
-            try:
-                if v["type"] == "gauge":
-                    g = {"type": "gauge", "label": str(v["label"])[:40], "value": float(v["value"]),
-                         "max": float(v["max"]), "unit": str(v.get("unit", ""))[:8]}
-                    if v.get("status") in ("ok", "warn", "over"):
-                        g["status"] = v["status"]
-                    if g["max"] > 0 and g["value"] >= 0:
-                        out.append(g)
-            except (KeyError, TypeError, ValueError):
-                continue
-        return out[:8]
+        return visuals_mod.clean_all(visuals)
 
     def send(self, text, markup=None, visuals=None):
         mid = self._next_mid()

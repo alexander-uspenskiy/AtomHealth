@@ -46,6 +46,14 @@ more protein), and suggest one realistic activity tweak. Null means no data: do 
 - If few days are logged (days_logged), say the advice will sharpen with more logging.
 - Plain text only: no markdown, no headings, no bullet symbols other than '-'. At most one emoji.
 - Reply in the language of the user's question if there is one, otherwise English.
+- Charts (phone app only; Telegram ignores them): you may attach up to 2 charts by ending your answer with tokens \
+such as [[visual kcal7d]]. NEVER write chart numbers yourself: a token only names a chart the app draws from the \
+data. Use one when a picture helps more than a sentence, and never repeat the chart's numbers in the text. Names: \
+today (calories against the daily limit + macros: for "how am I doing today / what is left"), ring (calorie ring), \
+macros (protein/carbs/fat today), kcal7d (calories per day, 7 days: for "this week"), kcal14d (14-day line), \
+protein7d (protein per day), steps7d and active7d (Apple Health activity per day: only if 'activity' exists), \
+weight30d and weight90d (weight line: only for questions about weight or progress). Skip charts for meal \
+comments and for questions that are not about the data.
 - Stay within the word limit you are given."""
 
 
@@ -348,19 +356,22 @@ def _clean(text):
 
 async def report(kind, s, question=None, llm=None):
     """Return {"headline", "text", "used_llm"}. /ask re-raises LLMError (a canned answer would be wrong)."""
+    from . import visuals              # imported here: visuals reads this module's data helpers
     llm = llm or LLM()
     head = headline(kind, s)
     try:
-        text = _clean(await llm.chat([{"role": "system", "content": SYSTEM},
-                                      {"role": "user", "content": _prompt(kind, s, question)}],
-                                     max_tokens=700, temperature=0.5))
+        raw = await llm.chat([{"role": "system", "content": SYSTEM},
+                              {"role": "user", "content": _prompt(kind, s, question)}], max_tokens=700, temperature=0.5)
+        raw, charts = visuals.extract(re.sub(r"<think>.*?</think>", "", raw or "", flags=re.S), limit=2)
+        text = _clean(raw)
         if len(text) < 15:
             raise LLMError("empty advice")
-        return {"headline": head, "text": text, "used_llm": True}
+        return {"headline": head, "text": text, "used_llm": True, "visuals": [] if kind == "meal" else charts}
     except LLMError:
         if kind == "ask":
             raise
-        return {"headline": head, "text": fallback_text(kind, s), "used_llm": False}
+        return {"headline": head, "text": fallback_text(kind, s), "used_llm": False,
+                "visuals": {"day": ["today"], "week": ["kcal7d"]}.get(kind, [])}
 
 
 # ---------- persistence: every message is kept so the dashboard can show "today's advice" ----------

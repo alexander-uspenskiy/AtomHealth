@@ -266,3 +266,31 @@ def test_tg_api_strips_visuals():
     api._http = Http()
     asyncio.run(api.call("sendMessage", text="t", visuals=[{"type": "gauge"}]))
     assert api._http.sent == {"text": "t"}
+
+
+def test_every_chart_type_is_validated_and_bad_ones_dropped():
+    from atomhealth import visuals
+    good = [{"type": "ring", "label": "Calories", "value": 5, "max": 10, "unit": "kcal"},
+            {"type": "bars", "label": "Steps", "unit": "", "points": [{"label": "Mon", "value": 3}, {"label": "Tue", "value": 5}],
+             "target": 4},
+            {"type": "line", "label": "Weight", "unit": "kg", "points": [{"label": "1", "value": 80}, {"label": "2", "value": 79}]}]
+    bad = [{"type": "bars", "label": "x", "points": [{"label": "a", "value": 1}]},        # one point is not a chart
+           {"type": "line", "label": "x", "points": [{"label": "a"}, {"label": "b"}]},
+           {"type": "ring", "label": "x", "value": -1, "max": 5}, "junk", None]
+    assert visuals.clean_all(good + bad) == [visuals.clean(g) for g in good]
+    assert visuals.clean_all(good)[1]["target"] == 4.0
+
+
+def test_chart_tokens_are_stripped_and_limited_to_known_names():
+    from atomhealth import visuals
+    text, names = visuals.extract("Nice week.\n[[visual kcal7d]] [[visual steps_7d]] [[visual nope]] [[visual KCAL7D]] [[visual today]]", limit=2)
+    assert text == "Nice week." or text.startswith("Nice week.")
+    assert "[[" not in text and names == ["kcal7d", "steps7d"]
+
+
+def test_named_charts_are_built_from_the_database_and_empty_data_gives_nothing():
+    from atomhealth import visuals
+    assert visuals.build(["kcal7d"], db, 2000, None)[0]["type"] == "bars"
+    assert len(visuals.build(["kcal7d"], db, 2000, None)[0]["points"]) == 7
+    assert visuals.build(["today", "ring"], db, 2000, None) == []        # nothing logged today
+    assert visuals.build(["bogus"], db, 2000, None) == []

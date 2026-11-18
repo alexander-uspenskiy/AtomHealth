@@ -392,3 +392,19 @@ def test_snapshot_includes_activity_today_and_week():
     assert a["today"]["steps"] == 8000 and a["today"]["workouts"]["minutes"] == 30
     assert a["last_7_days"]["avg_steps"] == 11500 and a["last_7_days"]["workout_types"] == {"Running": 1}
     assert len(a["last_7_days"]["per_day"]) == 7
+
+
+def test_report_turns_chart_tokens_into_names_and_keeps_snake_case_out_of_the_text():
+    async def handler(request):
+        return web.json_response({"choices": [{"message": {"content":
+            "Steady week, keep the protein up at dinner.\n[[visual kcal7d]]\n[[visual steps_7d]] [[visual bogus]]"}}]})
+
+    async def go(kind):
+        async with _llm_server(handler) as srv:
+            c = llm.LLM(base_url=str(srv.make_url("/v1")), model="m", api_key="k", timeout=5)
+            snap = advisor.snapshot(appmod.db, {"sex": "male"}, PLAN, 80, NOW)
+            return await advisor.report(kind, snap, llm=c)
+    r = asyncio.run(go("week"))
+    assert r["visuals"] == ["kcal7d", "steps7d"] and r["text"] == "Steady week, keep the protein up at dinner."
+    assert asyncio.run(go("meal"))["visuals"] == []
+    assert "kcal7d" in advisor.SYSTEM and "NEVER write chart numbers" in advisor.SYSTEM

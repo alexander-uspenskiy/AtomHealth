@@ -1,4 +1,5 @@
 import AtomHealthCore
+import Charts
 import SwiftUI
 import UIKit
 
@@ -142,31 +143,86 @@ struct MessageBubble: View {
     }
 }
 
-/// Gauges the Mac attached to a bot message: a labelled bar, green / amber / red by the Mac's verdict.
+/// Graphics the Mac attached to a bot message: bars, rings, bar charts and line charts (see `visuals.py`).
 struct VisualsView: View {
     let visuals: [ChatVisual]
 
     private func color(_ s: ChatVisual.Status?) -> Color {
         switch s { case .ok: .green; case .warn: .orange; case .over: .red; case nil: Theme.accent }
     }
+    private func amount(_ v: ChatVisual) -> String { "\(Fmt.num(v.value, 0)) / \(Fmt.num(v.max, 0)) \(v.unit)" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(visuals, id: \.self) { v in
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(v.label).font(.subheadline.weight(.semibold))
-                        Spacer()
-                        Text("\(Fmt.num(v.value, 0)) / \(Fmt.num(v.max, 0)) \(v.unit)").font(.caption).monospacedDigit()
-                            .foregroundStyle(.secondary)
+                Group {
+                    switch v.kind {
+                    case .gauge: gauge(v)
+                    case .ring: ring(v)
+                    case .bars, .line: chart(v)
                     }
-                    ProgressTrack(value: v.fraction, color: color(v.status))
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(v.label) \(Fmt.num(v.value, 0)) of \(Fmt.num(v.max, 0)) \(v.unit)")
             }
         }
         .frame(minWidth: 230, alignment: .leading)
+    }
+
+    private func gauge(_ v: ChatVisual) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(v.label).font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(amount(v)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+            ProgressTrack(value: v.fraction, color: color(v.status))
+        }
+    }
+
+    private func ring(_ v: ChatVisual) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().stroke(Color.primary.opacity(0.08), lineWidth: 10)
+                Circle().trim(from: 0, to: v.fraction).stroke(color(v.status), style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text("\(Int((v.value / v.max * 100).rounded()))%").font(.subheadline.weight(.bold)).monospacedDigit()
+            }
+            .frame(width: 72, height: 72)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(v.label).font(.subheadline.weight(.semibold))
+                Text(amount(v)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func chart(_ v: ChatVisual) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(v.label).font(.subheadline.weight(.semibold))
+                Spacer()
+                if let last = v.points.last { Text("\(Fmt.num(last.value, v.kind == .line ? 1 : 0)) \(v.unit)").font(.caption).monospacedDigit().foregroundStyle(.secondary) }
+            }
+            let lows = v.points.map(\.value) + (v.target.map { [$0] } ?? [])
+            let lo = v.kind == .line ? (lows.min() ?? 0) - 0.5 : 0
+            Chart {
+                ForEach(Array(v.points.enumerated()), id: \.offset) { _, p in
+                    if v.kind == .bars {
+                        BarMark(x: .value("Day", p.label), y: .value(v.label, p.value)).foregroundStyle(Theme.accent).cornerRadius(3)
+                    } else {
+                        LineMark(x: .value("Day", p.label), y: .value(v.label, p.value)).foregroundStyle(Theme.accent).interpolationMethod(.monotone)
+                        PointMark(x: .value("Day", p.label), y: .value(v.label, p.value)).foregroundStyle(Theme.accent).symbolSize(18)
+                    }
+                }
+                if let t = v.target {
+                    RuleMark(y: .value("Target", t)).foregroundStyle(.green).lineStyle(StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                }
+            }
+            .chartYScale(domain: lo...(Swift.max(lows.max() ?? 1, 1) * 1.08))
+            .chartXAxis { AxisMarks(values: .automatic(desiredCount: 5)) { _ in AxisValueLabel().font(.caption2) } }
+            .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { _ in AxisGridLine(); AxisValueLabel().font(.caption2) } }
+            .frame(height: 110)
+        }
+        .accessibilityLabel("\(v.label): " + v.points.map { "\($0.label) \(Fmt.num($0.value, 0))" }.joined(separator: ", "))
     }
 }
 

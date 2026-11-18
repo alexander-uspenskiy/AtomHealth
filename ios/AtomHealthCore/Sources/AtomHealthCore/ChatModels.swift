@@ -6,27 +6,65 @@ public struct ChatButton: Codable, Equatable, Hashable, Sendable {
     public init(text: String, data: String) { self.text = text; self.data = data }
 }
 
-/// A gauge the Mac attached to a bot message (`visuals` in `phonechat.py`): `value` against `max`, coloured by `status`.
+/// A graphic the Mac attached to a bot message (`visuals` in `phonechat.py` / `visuals.py`): a gauge or ring (`value`
+/// against `max`, coloured by `status`) or a bar / line chart of `points` with an optional `target` line.
 public struct ChatVisual: Codable, Equatable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case gauge, ring, bars, line }
     public enum Status: String, Codable, Sendable { case ok, warn, over }
+    public struct Point: Codable, Equatable, Hashable, Sendable {
+        public var label: String
+        public var value: Double
+        public init(label: String, value: Double) { self.label = label; self.value = value }
+    }
+    public var kind: Kind
     public var label: String
     public var value: Double
     public var max: Double
     public var unit: String
     public var status: Status?
-    public init(label: String, value: Double, max: Double, unit: String = "", status: Status? = nil) {
-        self.label = label; self.value = value; self.max = max; self.unit = unit; self.status = status
+    public var points: [Point]
+    public var target: Double?
+
+    public init(kind: Kind = .gauge, label: String, value: Double = 0, max: Double = 1, unit: String = "", status: Status? = nil,
+                points: [Point] = [], target: Double? = nil) {
+        self.kind = kind; self.label = label; self.value = value; self.max = max; self.unit = unit
+        self.status = status; self.points = points; self.target = target
     }
-    /// 0...1 for the bar; the number itself may exceed the limit.
+
+    // Tolerant decoding: a chat saved by an older build (gauges only, no kind / points) must still load.
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .gauge
+        label = try c.decode(String.self, forKey: .label)
+        value = try c.decodeIfPresent(Double.self, forKey: .value) ?? 0
+        max = try c.decodeIfPresent(Double.self, forKey: .max) ?? 1
+        unit = try c.decodeIfPresent(String.self, forKey: .unit) ?? ""
+        status = try c.decodeIfPresent(Status.self, forKey: .status)
+        points = try c.decodeIfPresent([Point].self, forKey: .points) ?? []
+        target = try c.decodeIfPresent(Double.self, forKey: .target)
+    }
+
+    /// 0...1 for a bar or ring; the number itself may exceed the limit.
     public var fraction: Double { max > 0 ? Swift.min(1, Swift.max(0, value / max)) : 0 }
 
     /// Reads the wire form; anything malformed is skipped.
     static func parse(_ v: JSONValue?) -> [ChatVisual]? {
         let list: [ChatVisual] = (v?.arrayValue ?? []).prefix(8).compactMap { d in
-            guard d["type"]?.stringValue == "gauge", let label = d["label"]?.stringValue,
-                  let value = d["value"]?.doubleValue, let mx = d["max"]?.doubleValue, mx > 0, value >= 0 else { return nil }
-            return ChatVisual(label: label, value: value, max: mx, unit: d["unit"]?.stringValue ?? "",
-                              status: d["status"]?.stringValue.flatMap(Status.init(rawValue:)))
+            guard let kind = d["type"]?.stringValue.flatMap(Kind.init(rawValue:)), let label = d["label"]?.stringValue else { return nil }
+            let unit = d["unit"]?.stringValue ?? ""
+            switch kind {
+            case .gauge, .ring:
+                guard let value = d["value"]?.doubleValue, let mx = d["max"]?.doubleValue, mx > 0, value >= 0 else { return nil }
+                return ChatVisual(kind: kind, label: label, value: value, max: mx, unit: unit,
+                                  status: d["status"]?.stringValue.flatMap(Status.init(rawValue:)))
+            case .bars, .line:
+                let pts: [Point] = (d["points"]?.arrayValue ?? []).prefix(31).compactMap { p in
+                    guard let l = p["label"]?.stringValue, let x = p["value"]?.doubleValue else { return nil }
+                    return Point(label: l, value: x)
+                }
+                guard pts.count >= 2 else { return nil }
+                return ChatVisual(kind: kind, label: label, unit: unit, points: pts, target: d["target"]?.doubleValue)
+            }
         }
         return list.isEmpty ? nil : list
     }

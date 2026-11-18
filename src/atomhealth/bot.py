@@ -14,7 +14,7 @@ import aiohttp
 
 from datetime import datetime
 
-from . import advisor, food, intent
+from . import advisor, food, intent, visuals
 from .llm import LLMError
 
 log = logging.getLogger("atomhealth.bot")
@@ -264,10 +264,11 @@ class TelegramBot:
     async def _send(self, chat_id, text, **kw):
         return await self.api.call("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML", **kw)
 
-    async def _edit(self, chat_id, msg_id, text, markup=None):
+    async def _edit(self, chat_id, msg_id, text, markup=None, visuals=None):
         try:
             await self.api.call("editMessageText", chat_id=chat_id, message_id=msg_id, text=text,
-                                parse_mode="HTML", reply_markup=markup or {"inline_keyboard": []})
+                                parse_mode="HTML", reply_markup=markup or {"inline_keyboard": []},
+                                **({"visuals": visuals} if visuals else {}))
         except TelegramError as e:
             if "not modified" not in str(e):
                 raise
@@ -364,7 +365,8 @@ class TelegramBot:
             return await self._edit(chat_id, note["message_id"],
                                     "⚠️ The AI model isn't reachable right now. Please try again in a minute.")
         text = (f"{title}\n" if title else "") + esc(r["headline"]) + "\n\n" + esc(r["text"])
-        await self._edit(chat_id, note["message_id"], text)
+        await self._edit(chat_id, note["message_id"], text,
+                         visuals=visuals.build(r.get("visuals") or [], self.db, self.target_kcal(), self.plan()))
         advisor.save_advice(self.db, kind, r, question=question, meal_id=meal_id, source=self.source)
         self.notify()                                   # lets the dashboard show it right away
 
@@ -498,21 +500,7 @@ class TelegramBot:
         return "\n".join(lines)
 
     def _today_visuals(self):
-        """Gauges for the phone chat: calories against the daily limit (green / amber / red) and the macro targets."""
-        start = food.day_start()
-        rows = food.meals_between(self.db, start, start + 86400)
-        tgt = self.target_kcal()
-        if not rows or not tgt:
-            return []
-        t = food.sum_meals(rows)
-        ratio = t["kcal"] / tgt
-        out = [{"type": "gauge", "label": "Calories", "value": round(t["kcal"]), "max": round(tgt), "unit": "kcal",
-                "status": "ok" if ratio <= 1 else "warn" if ratio <= 1.1 else "over"}]
-        macro = {m["key"]: m["g"] for m in (self.plan() or {}).get("macros", [])}
-        for key, label in (("protein", "Protein"), ("carbs", "Carbs"), ("fat", "Fat")):
-            if macro.get(key):
-                out.append({"type": "gauge", "label": label, "value": round(t[f"{key}_g"]), "max": round(macro[key]), "unit": "g"})
-        return out
+        return visuals.build(["today"], self.db, self.target_kcal(), self.plan())
 
     def _history_text(self):
         rows = food.recent_meals(self.db)
