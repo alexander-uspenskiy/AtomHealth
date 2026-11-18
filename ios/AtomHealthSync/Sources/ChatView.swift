@@ -44,6 +44,9 @@ struct ChatView: View {
     @State private var viewer: ViewerRequest?
     @State private var toast: String?
     @State private var tapped: [String: Date] = [:]
+    /// Only the newest messages are drawn; pulling down at the top reveals earlier ones, a page at a time.
+    @State private var shown = ChatView.pageSize
+    static let pageSize = 10
     @FocusState private var focused: Bool
 
     private var chat: ChatSnapshot { model.chat }
@@ -91,6 +94,7 @@ struct ChatView: View {
             .onChange(of: pickerItems) { _, items in loadPicked(items) }
             .onChange(of: chat.toast) { _, t in if let t { flash(t) } }
             .onChange(of: chat.messages.count) { _, _ in Task { await model.markChatRead() } }
+            .onChange(of: chat.messages.isEmpty) { _, empty in if empty { shown = Self.pageSize } }
             .task(id: scenePhase) { await poll() }
         }
     }
@@ -160,8 +164,12 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: 2) {
                     if chat.messages.isEmpty { emptyState }
-                    ForEach(Array(chat.messages.enumerated()), id: \.element.id) { i, m in
-                        if i == 0 || !Calendar.current.isDate(m.date, inSameDayAs: chat.messages[i - 1].date) { DaySeparator(date: m.date) }
+                    if earlier > 0 {
+                        Text("Pull down for \(min(earlier, Self.pageSize)) earlier message\(min(earlier, Self.pageSize) == 1 ? "" : "s")")
+                            .font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
+                    }
+                    ForEach(Array(visible.enumerated()), id: \.element.id) { i, m in
+                        if i == 0 || !Calendar.current.isDate(m.date, inSameDayAs: visible[i - 1].date) { DaySeparator(date: m.date) }
                         MessageBubble(message: m, model: model, tapsDisabled: isBusy(m), onPhoto: { viewer = $0 },
                                       onButton: { b in press(m, b) }, onDelete: { Task { await model.deleteChatMessage(m.id) } })
                             .id(m.id)
@@ -172,6 +180,13 @@ struct ChatView: View {
                 .padding(.horizontal, 12).padding(.top, 4)
             }
             .defaultScrollAnchor(.bottom)
+            .scrollBounceBehavior(.always)
+            .refreshable {
+                guard earlier > 0, let top = visible.first?.id else { return }
+                shown += Self.pageSize
+                try? await Task.sleep(for: .milliseconds(80))
+                proxy.scrollTo(top, anchor: .top)             // stay where you were: the new ones appear above
+            }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: chat.messages.last?.id) { _, _ in withAnimation { proxy.scrollTo("end", anchor: .bottom) } }
             .onChange(of: chat.messages.last?.text) { _, _ in withAnimation { proxy.scrollTo("end", anchor: .bottom) } }
@@ -179,6 +194,9 @@ struct ChatView: View {
             .onChange(of: focused) { _, f in if f { withAnimation { proxy.scrollTo("end", anchor: .bottom) } } }
         }
     }
+
+    private var visible: ArraySlice<ChatMessage> { chat.messages.suffix(shown) }
+    private var earlier: Int { max(0, chat.messages.count - shown) }
 
     /// A button stays disabled from the tap until the bot edits that message (or 20 s pass).
     private func isBusy(_ m: ChatMessage) -> Bool {

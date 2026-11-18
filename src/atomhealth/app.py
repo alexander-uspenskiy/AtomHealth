@@ -551,7 +551,7 @@ def telegram_cfg():
             "auto_save": bool(c.get("auto_save", False)),
             "session_minutes": min(max(int(c.get("session_minutes", 10)), 1), 180),
             "daily_summary": bool(c.get("daily_summary", True)),
-            "summary_time": c.get("summary_time") if TIME_RE.match(c.get("summary_time") or "") else "21:00"}
+            "summary_time": c.get("summary_time") if TIME_RE.match(c.get("summary_time") or "") else "22:00"}
 
 
 def phone_cfg():

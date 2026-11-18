@@ -667,7 +667,7 @@ class TelegramBot:
         if not c.get("daily_summary", True):
             return
         now = now or datetime.now()
-        if now.strftime("%H:%M") < c.get("summary_time", "21:00"):
+        if now.strftime("%H:%M") < c.get("summary_time", "22:00"):
             return
         key = now.strftime("%Y-%m-%d")
         if self.kv_get("tg_last_summary") == key:
