@@ -45,6 +45,7 @@ struct ChatView: View {
     @State private var toast: String?
     @State private var tapped: [String: Date] = [:]
     @State private var loadingEarlier = false
+    @State private var topVisible = false           // the "loading" row at the top is on screen
     @State private var pagingArmed = false          // ignore the top row while the chat is still laying out and scrolling to the end
     @State private var showStorage = false
     @State private var bannerDismissed = false
@@ -172,7 +173,8 @@ struct ChatView: View {
                     if chat.hasEarlier {
                         // reaching the top of what is loaded brings in the next 10 (the view keeps its place)
                         ProgressView().controlSize(.small).padding(.vertical, 10).id("earlier")
-                            .onAppear { loadEarlier(proxy) }
+                            .onAppear { topVisible = true; loadEarlier(proxy) }
+                            .onDisappear { topVisible = false }
                     }
                     ForEach(Array(chat.messages.enumerated()), id: \.element.id) { i, m in
                         if i == 0 || !Calendar.current.isDate(m.date, inSameDayAs: chat.messages[i - 1].date) { DaySeparator(date: m.date) }
@@ -201,8 +203,10 @@ struct ChatView: View {
             await model.loadEarlierChat()
             try? await Task.sleep(for: .milliseconds(60))
             proxy.scrollTo(top, anchor: .top)                // stay where you were: the older ones appear above
-            try? await Task.sleep(for: .milliseconds(250))   // and do not fire again until the view has settled
+            try? await Task.sleep(for: .milliseconds(250))   // let the view settle
             loadingEarlier = false
+            // onAppear fires once: if the row is still on screen (short pages, fast scrolling) ask for the next page now
+            if topVisible { loadEarlier(proxy) }
         }
     }
 
