@@ -195,7 +195,7 @@ struct ChatView: View {
         }
     }
 
-    private var visible: ArraySlice<ChatMessage> { chat.messages.suffix(shown) }
+    private var visible: [ChatMessage] { Array(chat.messages.suffix(shown)) }   // a real Array: slice indices do not start at 0
     private var earlier: Int { max(0, chat.messages.count - shown) }
 
     /// A button stays disabled from the tap until the bot edits that message (or 20 s pass).
