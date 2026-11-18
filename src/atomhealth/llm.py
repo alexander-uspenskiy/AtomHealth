@@ -102,7 +102,9 @@ class LLM:
         """Upload the image, queue an AtomHealth agent run (agent_mode=require), poll until it ends."""
         a = config.atom_settings()
         base = a["base_url"]
-        headers = {"Authorization": f"Bearer {a['token']}"} if a["token"] else {}
+        headers = {"X-Atom-Client": "AtomHealth"}  # shown as the Caller on Atom's API calls page
+        if a["token"]:
+            headers["Authorization"] = f"Bearer {a['token']}"
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=a["timeout"]), headers=headers) as http:
                 upload_ids = []
