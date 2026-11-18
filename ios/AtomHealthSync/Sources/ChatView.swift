@@ -45,6 +45,7 @@ struct ChatView: View {
     @State private var toast: String?
     @State private var tapped: [String: Date] = [:]
     @State private var loadingEarlier = false
+    @State private var fieldGeneration = 0          // bumping it rebuilds the text field (see `clearDraft`)
     @State private var topVisible = false           // the "loading" row at the top is on screen
     @State private var pagingArmed = false          // ignore the top row while the chat is still laying out and scrolling to the end
     @State private var showStorage = false
@@ -325,7 +326,7 @@ struct ChatView: View {
 
             HStack(alignment: .bottom, spacing: 4) {
                 TextField(staged.isEmpty ? "Message or /command" : "Add a caption (e.g. 200 g rice)", text: $draft, axis: .vertical)
-                    .lineLimit(1...5).focused($focused).textInputAutocapitalization(.sentences)
+                    .lineLimit(1...5).focused($focused).textInputAutocapitalization(.sentences).id(fieldGeneration)
                     .padding(.leading, 12).padding(.vertical, 8)
                 if draft.isEmpty {
                     Button { showCommands = true } label: { Image(systemName: "slash.circle").font(.title3).foregroundStyle(.secondary) }
@@ -364,14 +365,27 @@ struct ChatView: View {
 
     // MARK: actions
     private func choose(_ c: BotCommand) {
-        if c.needsArgument { draft = c.cmd + " "; focused = true } else { draft = ""; Task { await model.sendChat(text: c.cmd) } }
+        if c.needsArgument { draft = c.cmd + " "; focused = true } else { clearDraft(); Task { await model.sendChat(text: c.cmd) } }
     }
 
     private func send() {
         let text = trimmed, photos = staged.compactMap(\.result)
         guard canSend else { return }
-        draft = ""; staged = []; pickerItems = []
+        staged = []; pickerItems = []
+        clearDraft()
         Task { await model.sendChat(text: text, photos: photos) }
+    }
+
+    /// A multi-line field ignores being emptied while the keyboard still holds an unfinished (auto-corrected) word, so the
+    /// sent text stayed in the box. Emptying it and rebuilding the field clears the keyboard's state too.
+    private func clearDraft() {
+        let hadFocus = focused
+        draft = ""
+        fieldGeneration += 1
+        Task { @MainActor in
+            draft = ""
+            if hadFocus { focused = true }
+        }
     }
 
     private func loadPicked(_ items: [PhotosPickerItem]) {
