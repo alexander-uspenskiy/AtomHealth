@@ -339,7 +339,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
 <section class="view" id="v-trends" hidden>
   <div class="toolbar">
     <div><h2 style="margin:0;font-size:18px">Trends</h2><div class="muted" id="trendSub"></div></div>
-    <div class="pills" id="range"><button data-d="30" aria-pressed="false">30 days</button><button data-d="90" aria-pressed="false">90 days</button><button data-d="365" aria-pressed="false">1 year</button><button data-d="0" aria-pressed="true">All time</button></div>
+    <select id="range" aria-label="Time frame" style="width:auto"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="20">20 days</option><option value="30" selected>30 days</option><option value="90">3 months</option><option value="180">6 months</option><option value="0">All</option></select>
   </div>
   <div class="charts">
     <div class="card wide"><div class="card-h"><div><h2>Weight</h2><p class="sub">Shaded area = healthy range (BMI 18.5–25) · dashed = optimal and your target</p></div></div><div class="chart-box"><canvas id="cW"></canvas></div></div>
@@ -479,7 +479,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
 <script>
 const $ = id => document.getElementById(id);
 const DAY = 86400;
-let S = null, rangeDays = 0, charts = {};
+let S = null, rangeDays = 30, charts = {};
 const fmt = (v, d = 1) => v == null || isNaN(v) ? '—' : Number(v).toFixed(d);
 const sgn = (v, d = 1) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
 const fdate = ts => new Date(ts * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -516,11 +516,7 @@ function showTab(name) {
   if (name === 'settings' && typeof loadCfg === 'function') loadCfg(false);
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
-document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
-  rangeDays = +b.dataset.d;
-  document.querySelectorAll('#range button').forEach(x => x.setAttribute('aria-pressed', x === b));
-  renderCharts();
-});
+$('range').onchange = e => { rangeDays = +e.target.value; renderCharts(); };
 
 /* ---------------- data ---------------- */
 async function load() { S = await (await fetch('/api/state')).json(); renderAll(); }
