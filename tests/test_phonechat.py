@@ -240,3 +240,29 @@ def test_relay_backoff_is_capped_while_chat_is_on():
     assert a._backoff(False) == a._backoff(True) == relay.CHAT_BACKOFF_MAX
     assert b._backoff(False) == 900 and b._backoff(True) == 300
     assert a.status()["failures"] == 6 and "next_retry" in a.status()
+
+
+def test_visuals_ride_along_only_when_valid_and_telegram_never_gets_them():
+    chat = make_chat()
+    chat.send("hi", visuals=[{"type": "gauge", "label": "Calories", "value": 1800, "max": 2000, "unit": "kcal", "status": "ok"},
+                             {"type": "gauge", "label": "bad", "value": 1, "max": 0}, {"type": "pie"}, {"label": "x"}])
+    chat.send("plain")
+    first, second = chat.drain()
+    assert first["data"]["visuals"] == [{"type": "gauge", "label": "Calories", "value": 1800.0, "max": 2000.0,
+                                         "unit": "kcal", "status": "ok"}]
+    assert "visuals" not in second["data"]
+
+
+def test_tg_api_strips_visuals():
+    class Resp:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def json(self, **k): return {"ok": True, "result": {}}
+
+    class Http:
+        def post(self, url, json): self.sent = json; return Resp()
+
+    api = botmod.TgApi("1:x")
+    api._http = Http()
+    asyncio.run(api.call("sendMessage", text="t", visuals=[{"type": "gauge"}]))
+    assert api._http.sent == {"text": "t"}

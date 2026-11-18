@@ -279,9 +279,13 @@ def test_commands_today_undo_weight_help(analyzed):
         await bot.handle_update(text_msg("/undo"))
         await bot.handle_update(text_msg("/help"))
         return bot
-    texts = [m["text"] for m in run(go()).api.of("sendMessage") if m["text"] != "🔍 Analysing…"]
+    bot_calls = run(go()).api.of("sendMessage")
+    texts = [m["text"] for m in bot_calls if m["text"] != "🔍 Analysing…"]
     assert "Nothing logged today" in texts[0]
     assert "458 kcal" in texts[1] and "1,542 left" in texts[1]
+    shown = [m for m in bot_calls if m["text"] == texts[1]][0]
+    assert shown["visuals"][0] == {"type": "gauge", "label": "Calories", "value": 458, "max": 2000, "unit": "kcal", "status": "ok"}
+    assert "visuals" not in [m for m in bot_calls if m["text"] == texts[0]][0] or not [m for m in bot_calls if m["text"] == texts[0]][0]["visuals"]
     assert "80.0 kg" in texts[2] and "Deleted" in texts[3] and "Nothing to undo" in texts[4] and "/today" in texts[5]
     for table in ("meals", "meal_items", "meal_photos"):      # undo removes the photos and data, not just hides them
         assert appmod.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0

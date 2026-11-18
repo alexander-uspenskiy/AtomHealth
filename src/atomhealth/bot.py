@@ -62,6 +62,7 @@ class TgApi:
             await self._http.close()
 
     async def call(self, method, **params):
+        params.pop("visuals", None)           # drawn by the phone app only; Telegram gets the text
         async with self._http.post(f"{self.base}/bot{self.token}/{method}", json=params) as r:
             data = await r.json(content_type=None)
         if not data.get("ok"):
@@ -385,7 +386,7 @@ class TelegramBot:
         if cmd == "/help":
             return await self._send(chat_id, HELP)
         if cmd == "/today":
-            return await self._send(chat_id, self._today_text())
+            return await self._send(chat_id, self._today_text(), visuals=self._today_visuals())
         if cmd == "/history":
             return await self._send(chat_id, self._history_text())
         if cmd == "/delete":
@@ -495,6 +496,23 @@ class TelegramBot:
         lines.append("\n💡 <b>Advice</b>\n" + (esc(day["headline"]) + "\n" + esc(day["text"])[:1500] if day
                                               else "None for the current meals yet. /advice writes one."))
         return "\n".join(lines)
+
+    def _today_visuals(self):
+        """Gauges for the phone chat: calories against the daily limit (green / amber / red) and the macro targets."""
+        start = food.day_start()
+        rows = food.meals_between(self.db, start, start + 86400)
+        tgt = self.target_kcal()
+        if not rows or not tgt:
+            return []
+        t = food.sum_meals(rows)
+        ratio = t["kcal"] / tgt
+        out = [{"type": "gauge", "label": "Calories", "value": round(t["kcal"]), "max": round(tgt), "unit": "kcal",
+                "status": "ok" if ratio <= 1 else "warn" if ratio <= 1.1 else "over"}]
+        macro = {m["key"]: m["g"] for m in (self.plan() or {}).get("macros", [])}
+        for key, label in (("protein", "Protein"), ("carbs", "Carbs"), ("fat", "Fat")):
+            if macro.get(key):
+                out.append({"type": "gauge", "label": label, "value": round(t[f"{key}_g"]), "max": round(macro[key]), "unit": "g"})
+        return out
 
     def _history_text(self):
         rows = food.recent_meals(self.db)

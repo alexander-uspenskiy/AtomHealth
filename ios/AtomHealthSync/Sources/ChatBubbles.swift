@@ -56,6 +56,7 @@ struct MessageBubble: View {
             VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
                 VStack(alignment: .leading, spacing: 6) {
                     if !message.photos.isEmpty { photos }
+                    if let v = message.visuals, !v.isEmpty { VisualsView(visuals: v) }
                     if !message.text.isEmpty {
                         Group {
                             if mine { Text(message.text) } else { Text(TelegramHTML.attributed(message.text)) }
@@ -138,6 +139,34 @@ struct MessageBubble: View {
             }
         }
         .frame(maxWidth: 300)
+    }
+}
+
+/// Gauges the Mac attached to a bot message: a labelled bar, green / amber / red by the Mac's verdict.
+struct VisualsView: View {
+    let visuals: [ChatVisual]
+
+    private func color(_ s: ChatVisual.Status?) -> Color {
+        switch s { case .ok: .green; case .warn: .orange; case .over: .red; case nil: Theme.accent }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(visuals, id: \.self) { v in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(v.label).font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text("\(Fmt.num(v.value, 0)) / \(Fmt.num(v.max, 0)) \(v.unit)").font(.caption).monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressTrack(value: v.fraction, color: color(v.status))
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(v.label) \(Fmt.num(v.value, 0)) of \(Fmt.num(v.max, 0)) \(v.unit)")
+            }
+        }
+        .frame(minWidth: 230, alignment: .leading)
     }
 }
 

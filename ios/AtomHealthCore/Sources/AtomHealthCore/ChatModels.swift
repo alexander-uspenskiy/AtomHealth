@@ -6,6 +6,32 @@ public struct ChatButton: Codable, Equatable, Hashable, Sendable {
     public init(text: String, data: String) { self.text = text; self.data = data }
 }
 
+/// A gauge the Mac attached to a bot message (`visuals` in `phonechat.py`): `value` against `max`, coloured by `status`.
+public struct ChatVisual: Codable, Equatable, Hashable, Sendable {
+    public enum Status: String, Codable, Sendable { case ok, warn, over }
+    public var label: String
+    public var value: Double
+    public var max: Double
+    public var unit: String
+    public var status: Status?
+    public init(label: String, value: Double, max: Double, unit: String = "", status: Status? = nil) {
+        self.label = label; self.value = value; self.max = max; self.unit = unit; self.status = status
+    }
+    /// 0...1 for the bar; the number itself may exceed the limit.
+    public var fraction: Double { max > 0 ? Swift.min(1, Swift.max(0, value / max)) : 0 }
+
+    /// Reads the wire form; anything malformed is skipped.
+    static func parse(_ v: JSONValue?) -> [ChatVisual]? {
+        let list: [ChatVisual] = (v?.arrayValue ?? []).prefix(8).compactMap { d in
+            guard d["type"]?.stringValue == "gauge", let label = d["label"]?.stringValue,
+                  let value = d["value"]?.doubleValue, let mx = d["max"]?.doubleValue, mx > 0, value >= 0 else { return nil }
+            return ChatVisual(label: label, value: value, max: mx, unit: d["unit"]?.stringValue ?? "",
+                              status: d["status"]?.stringValue.flatMap(Status.init(rawValue:)))
+        }
+        return list.isEmpty ? nil : list
+    }
+}
+
 public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
     public enum Role: String, Codable, Sendable { case user, bot }
     /// Telegram-style ticks: waiting to leave the phone, handed to the relay, answered by the Mac.
@@ -20,11 +46,13 @@ public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
     public var mid: Int?                  // the Mac's message id, needed to answer a button tap
     public var photos: [String]           // file names in the chat media folder
     public var delivery: Delivery
+    public var visuals: [ChatVisual]?     // optional so chats saved by older builds still load
 
     public init(id: String, role: Role, text: String, buttons: [[ChatButton]] = [], date: Date = Date(),
-                edited: Bool = false, mid: Int? = nil, photos: [String] = [], delivery: Delivery = .sending) {
+                edited: Bool = false, mid: Int? = nil, photos: [String] = [], delivery: Delivery = .sending,
+                visuals: [ChatVisual]? = nil) {
         self.id = id; self.role = role; self.text = text; self.buttons = buttons; self.date = date
-        self.edited = edited; self.mid = mid; self.photos = photos; self.delivery = delivery
+        self.edited = edited; self.mid = mid; self.photos = photos; self.delivery = delivery; self.visuals = visuals
     }
 }
 

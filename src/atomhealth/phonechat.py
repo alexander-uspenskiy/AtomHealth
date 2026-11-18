@@ -10,7 +10,9 @@ Telegram, exchanges end-to-end encrypted envelopes with the phone through the re
         "callback"  {data, msg_id}                          a tap on an inline button of message msg_id
         "ping"      {}                                      "are you there?": answered at once with "presence"
     Mac -> phone   type "chat_out"  id = "m<message_id>" (an upsert with a higher version is an edit)
-        data {mid, text (Telegram-HTML subset), buttons [[{text, data}]], ts}
+        data {mid, text (Telegram-HTML subset), buttons [[{text, data}]], ts, visuals (optional)}
+        visuals: [{"type": "gauge", label, value, max, unit, status?: "ok"|"warn"|"over"}] drawn above the text by the app;
+        Telegram never sees them and older apps ignore them, so the text always says the same thing.
         id "typing": data {typing_until}      id "toast": data {toast}
         id "presence": data {ts, ai}   the answer to a ping; ai = is the AI backend reachable (true/false/null=unknown)
 
@@ -219,18 +221,41 @@ class PhoneChat:
         return [[{"text": str(b["text"]), "data": str(b["callback_data"])} for b in row if "callback_data" in b]
                 for row in rows]
 
-    def send(self, text, markup=None):
+    @staticmethod
+    def _visuals(visuals):
+        """Only well-formed gauges, at most 8: the phone draws whatever arrives, so keep it small and sane."""
+        out = []
+        for v in visuals or []:
+            try:
+                if v["type"] == "gauge":
+                    g = {"type": "gauge", "label": str(v["label"])[:40], "value": float(v["value"]),
+                         "max": float(v["max"]), "unit": str(v.get("unit", ""))[:8]}
+                    if v.get("status") in ("ok", "warn", "over"):
+                        g["status"] = v["status"]
+                    if g["max"] > 0 and g["value"] >= 0:
+                        out.append(g)
+            except (KeyError, TypeError, ValueError):
+                continue
+        return out[:8]
+
+    def send(self, text, markup=None, visuals=None):
         mid = self._next_mid()
         ts = int(time.time())
         self._created[mid] = ts
         while len(self._created) > _SEEN:
             self._created.popitem(last=False)
-        self._emit(f"m{mid}", {"mid": mid, "text": text, "buttons": self._buttons(markup), "ts": ts})
+        data = {"mid": mid, "text": text, "buttons": self._buttons(markup), "ts": ts}
+        if self._visuals(visuals):
+            data["visuals"] = self._visuals(visuals)
+        self._emit(f"m{mid}", data)
         return mid
 
-    def edit(self, mid, text, markup=None):
-        self._emit(f"m{mid}", {"mid": mid, "text": text, "buttons": self._buttons(markup),
-                               "ts": self._created.get(mid, int(time.time())), "edited": True})
+    def edit(self, mid, text, markup=None, visuals=None):
+        data = {"mid": mid, "text": text, "buttons": self._buttons(markup),
+                "ts": self._created.get(mid, int(time.time())), "edited": True}
+        if self._visuals(visuals):
+            data["visuals"] = self._visuals(visuals)
+        self._emit(f"m{mid}", data)
 
     def _send_error(self, text):
         self.send(text)
@@ -268,9 +293,9 @@ class PhoneApi:
         if method == "getUpdates":
             return await c.next_updates(p.get("timeout", 25))
         if method == "sendMessage":
-            return {"message_id": c.send(p["text"], p.get("reply_markup"))}
+            return {"message_id": c.send(p["text"], p.get("reply_markup"), p.get("visuals"))}
         if method == "editMessageText":
-            c.edit(p["message_id"], p["text"], p.get("reply_markup"))
+            c.edit(p["message_id"], p["text"], p.get("reply_markup"), p.get("visuals"))
             return {}
         if method == "sendChatAction":
             c.typing()

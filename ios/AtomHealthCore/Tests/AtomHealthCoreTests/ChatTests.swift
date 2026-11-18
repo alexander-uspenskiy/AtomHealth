@@ -280,3 +280,22 @@ struct ChatOnlySink: InboundSink {
     snap = await s.snapshot()
     #expect(!snap.isTyping())
 }
+
+@Test func gaugesAreParsedKeptOnEditAndOldChatsStillLoad() async throws {
+    let dir = tempDir()
+    let s = ChatStore(directory: dir)
+    var env = botOut(1, "Today")
+    env.data = .object(["mid": .number(1), "text": .string("Today"), "ts": .number(1_700_000_000), "visuals": .array([
+        .object(["type": .string("gauge"), "label": .string("Calories"), "value": .number(2300), "max": .number(2000),
+                 "unit": .string("kcal"), "status": .string("over")]),
+        .object(["type": .string("gauge"), "label": .string("bad"), "value": .number(1), "max": .number(0)]),
+        .object(["type": .string("pie")])])])
+    await s.apply(env)
+    let v = await s.snapshot().messages[0].visuals
+    #expect(v == [ChatVisual(label: "Calories", value: 2300, max: 2000, unit: "kcal", status: .over)])
+    #expect(v?[0].fraction == 1)
+    await s.apply(botOut(1, "Today", edited: true, version: 2))      // an edit without visuals clears them
+    #expect(await s.snapshot().messages[0].visuals == nil)
+    let old = #"{"id":"m9","role":"bot","text":"x","buttons":[],"date":0,"edited":false,"photos":[],"delivery":"answered"}"#
+    #expect(try JSONDecoder().decode(ChatMessage.self, from: Data(old.utf8)).visuals == nil)
+}

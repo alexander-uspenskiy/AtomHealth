@@ -68,11 +68,13 @@ public actor ChatStore {
             typingUntil = nil        // any bot message, new or an edit of its "Analysing…" note, ends "typing…"
             if let i = state.messages.firstIndex(where: { $0.id == id }) {
                 state.messages[i].text = text; state.messages[i].buttons = buttons
+                state.messages[i].visuals = ChatVisual.parse(d["visuals"])
                 state.messages[i].edited = d["edited"]?.boolValue ?? true
             } else {
                 let ts = d["ts"]?.doubleValue ?? Double(env.updatedAt)
                 state.messages.append(ChatMessage(id: id, role: .bot, text: text, buttons: buttons,
-                                                  date: Date(timeIntervalSince1970: ts), mid: mid, delivery: .answered))
+                                                  date: Date(timeIntervalSince1970: ts), mid: mid, delivery: .answered,
+                                                  visuals: ChatVisual.parse(d["visuals"])))
                 for k in state.messages.indices where state.messages[k].role == .user { state.messages[k].delivery = .answered }
             }
             prune(); save()
