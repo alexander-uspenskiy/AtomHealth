@@ -13,4 +13,10 @@ migrations_dir = "migrations"
 [triggers]
 crons = ["17 3 * * *"]
 
+# Request logs in the dashboard (free tier: 200k events/day; ~10k requests/day now).
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
 # Secret (never commit):  npx wrangler secret put ADMIN_CODE
