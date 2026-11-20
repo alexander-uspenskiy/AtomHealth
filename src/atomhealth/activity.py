@@ -63,15 +63,17 @@ def _round(v, n=0):
 def feed(db, now=None):
     """Everything the Activity UI needs, ascending daily rows and newest-first workouts.
 
-    days[]: day, active_kcal, basal_kcal, steps (from Health), logged_kcal (meals confirmed on this Mac),
+    days[]: day, active_kcal, basal_kcal, steps, exercise_min, resting_hr, hrv, vo2max (from Health), logged_kcal (meals confirmed on this Mac),
     other_kcal (nutrition other Health apps wrote). The two intake sources never overlap by design (see sync.py).
     """
     now = now or time.time()
     cutoff_day = time.strftime("%Y-%m-%d", time.localtime(now - FEED_DAYS * 86400))
     days = {}
-    for r in db.execute("SELECT day, active_kcal, basal_kcal, steps FROM activity_days WHERE day>=?", (cutoff_day,)):
+    for r in db.execute("SELECT day, active_kcal, basal_kcal, steps, exercise_min, resting_hr, hrv, vo2max "
+                       "FROM activity_days WHERE day>=?", (cutoff_day,)):
         days[r["day"]] = {"day": r["day"], "active_kcal": _round(r["active_kcal"]), "basal_kcal": _round(r["basal_kcal"]),
-                          "steps": r["steps"]}
+                          "steps": r["steps"], "exercise_min": _round(r["exercise_min"]), "resting_hr": _round(r["resting_hr"]),
+                          "hrv": _round(r["hrv"]), "vo2max": _round(r["vo2max"], 1)}
     for r in db.execute("SELECT day, kcal FROM nutrition_days WHERE day>=?", (cutoff_day,)):
         days.setdefault(r["day"], {"day": r["day"]})["other_kcal"] = _round(r["kcal"])
     if days:

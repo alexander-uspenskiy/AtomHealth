@@ -229,10 +229,17 @@ public final class HealthKitReader: @unchecked Sendable {
         }
         let active = await sums(HK.active, HK.kcal, other: false), basal = await sums(HK.basal, HK.kcal, other: false)
         let steps = await sums(HK.steps, .count(), other: false)
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        let exercise = await sums(HK.exercise, .minute(), other: false)
+        let rhr = await daily(HK.restingHR, bpm, .discreteAverage, from: start, to: end)
+        let hrv = await daily(HK.hrv, .secondUnit(with: .milli), .discreteAverage, from: start, to: end)
+        let vo2 = await daily(HK.vo2max, HKUnit(from: "ml/(kg*min)"), .discreteAverage, from: start, to: end)
         let kcal = await sums(HK.energy, HK.kcal, other: true), prot = await sums(HK.protein, HK.g, other: true)
         let carb = await sums(HK.carbs, HK.g, other: true), fat = await sums(HK.fat, HK.g, other: true), fib = await sums(HK.fiber, HK.g, other: true)
-        for day in Set(active.keys).union(basal.keys).union(steps.keys).sorted() {
-            let c = HealthMapping.activityDayChange(day: day, activeKcal: active[day], basalKcal: basal[day], steps: steps[day])
+        let activityDays = Set(active.keys).union(basal.keys).union(steps.keys).union(exercise.keys).union(rhr.keys).union(hrv.keys).union(vo2.keys)
+        for day in activityDays.sorted() {
+            let c = HealthMapping.activityDayChange(day: day, activeKcal: active[day], basalKcal: basal[day], steps: steps[day],
+                                                    exerciseMin: exercise[day], restingHR: rhr[day], hrv: hrv[day], vo2max: vo2[day])
             await enqueueIfChanged(c, key: "fp.activity.\(day)")
         }
         for day in kcal.keys.sorted() {

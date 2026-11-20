@@ -143,12 +143,15 @@ def test_last_writer_wins_and_tombstone_blocks_resurrection():
 def test_activity_nutrition_and_workouts():
     ts = int(time.time()) - 3600
     out = sync.apply_batch(db, [
-        env("activity_day", "day:2026-11-13", 1, day="2026-11-13", active_kcal=640, basal_kcal=1700, steps=9100),
+        env("activity_day", "day:2026-11-13", 1, day="2026-11-13", active_kcal=640, basal_kcal=1700, steps=9100,
+            exercise_min=41, resting_hr=57, hrv=48.5, vo2max=43.6),
         env("nutrition_day", "day:2026-11-13", 1, day="2026-11-13", kcal=1800, protein_g=120, carbs_g=200, fat_g=60),
         env("workout", "w-1", 1, start_ts=ts, end_ts=ts + 1800, type="running", kcal=300, distance_m=5000),
     ])
     assert out["applied"] == 3
     assert dict(db.execute("SELECT * FROM activity_days").fetchone())["steps"] == 9100
+    row = dict(db.execute("SELECT * FROM activity_days").fetchone())
+    assert (row["exercise_min"], row["resting_hr"], row["hrv"], row["vo2max"]) == (41, 57, 48.5, 43.6)
     assert db.execute("SELECT kcal FROM nutrition_days").fetchone()[0] == 1800
     assert db.execute("SELECT type FROM workouts").fetchone()[0] == "running"
     sync.apply_batch(db, [env("activity_day", "day:2026-11-13", 2, day="2026-11-13", active_kcal=700, steps=9500)])
@@ -162,6 +165,7 @@ def test_activity_nutrition_and_workouts():
     env("weight", "x", 1, ts=int(time.time()), weight_kg=True),                 # bool is not a number
     env("activity_day", "d", 1, day="yesterday", active_kcal=1),                # malformed day
     env("activity_day", "d", 1, day="2026-11-13", steps=-4),                    # negative
+    env("activity_day", "d", 1, day="2026-11-13", resting_hr=900),              # impossible heart rate
     env("workout", "w", 1, start_ts=5, end_ts=6),                               # before 2000
     env("meal", "m", 1, kcal=1),                                                # meals are outbound-only
     {"v": 2, "type": "weight", "op": "upsert", "id": "x", "version": 1, "data": {}},

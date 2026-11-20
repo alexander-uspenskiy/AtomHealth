@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS sync_log(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, direction TEXT NOT NULL,
   type TEXT, count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail TEXT);
 CREATE TABLE IF NOT EXISTS activity_days(
-  day TEXT PRIMARY KEY, active_kcal REAL, basal_kcal REAL, steps INTEGER, updated_at INTEGER NOT NULL);
+  day TEXT PRIMARY KEY, active_kcal REAL, basal_kcal REAL, steps INTEGER, updated_at INTEGER NOT NULL,
+  exercise_min REAL, resting_hr REAL, hrv REAL, vo2max REAL);
 -- nutrition logged by OTHER apps in Apple Health, aggregated per day by the phone.
 -- Kept apart from `meals` so it can never double-count with Telegram/photo meals.
 CREATE TABLE IF NOT EXISTS nutrition_days(
@@ -104,7 +105,9 @@ def migrate(db):
     """Idempotent. Adds sync columns/tables/triggers; queues existing data once for the first sync."""
     db.executescript(SCHEMA)
     for table, col, decl in (("readings", "sync_id", "TEXT"), ("readings", "fat_pct_m", "REAL"),
-                             ("readings", "lean_kg_m", "REAL"), ("meals", "sync_id", "TEXT")):
+                             ("readings", "lean_kg_m", "REAL"), ("meals", "sync_id", "TEXT"),
+                             ("activity_days", "exercise_min", "REAL"), ("activity_days", "resting_hr", "REAL"),
+                             ("activity_days", "hrv", "REAL"), ("activity_days", "vo2max", "REAL")):
         if col not in _cols(db, table):
             db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
     for table in ("readings", "meals"):  # backfill BEFORE triggers exist so it does not queue noise
@@ -265,12 +268,18 @@ def apply_envelope(db, env):
             result = _upsert_weight(db, sid, d)
         elif type_ == "activity_day":
             day = _day(d.get("day"))
-            db.execute("INSERT INTO activity_days(day,active_kcal,basal_kcal,steps,updated_at) VALUES(?,?,?,?,?) "
+            db.execute("INSERT INTO activity_days(day,active_kcal,basal_kcal,steps,exercise_min,resting_hr,hrv,vo2max,updated_at) "
+                       "VALUES(?,?,?,?,?,?,?,?,?) "
                        "ON CONFLICT(day) DO UPDATE SET active_kcal=excluded.active_kcal, basal_kcal=excluded.basal_kcal,"
-                       " steps=excluded.steps, updated_at=excluded.updated_at",
+                       " steps=excluded.steps, exercise_min=excluded.exercise_min, resting_hr=excluded.resting_hr,"
+                       " hrv=excluded.hrv, vo2max=excluded.vo2max, updated_at=excluded.updated_at",
                        (day, _num(d.get("active_kcal"), 0, 20000, "active_kcal", False),
                         _num(d.get("basal_kcal"), 0, 20000, "basal_kcal", False),
-                        None if d.get("steps") is None else int(_num(d["steps"], 0, 300000, "steps")), now))
+                        None if d.get("steps") is None else int(_num(d["steps"], 0, 300000, "steps")),
+                        _num(d.get("exercise_min"), 0, 1440, "exercise_min", False),
+                        _num(d.get("resting_hr"), 20, 220, "resting_hr", False),
+                        _num(d.get("hrv"), 0, 500, "hrv", False),
+                        _num(d.get("vo2max"), 5, 100, "vo2max", False), now))
         elif type_ == "nutrition_day":
             day = _day(d.get("day"))
             db.execute("INSERT INTO nutrition_days(day,kcal,protein_g,carbs_g,fat_g,fiber_g,updated_at) VALUES(?,?,?,?,?,?,?) "

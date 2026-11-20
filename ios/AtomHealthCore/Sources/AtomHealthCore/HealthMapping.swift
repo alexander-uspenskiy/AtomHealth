@@ -20,9 +20,11 @@ public enum HealthMapping {
                     data: object([("ts", date.timeIntervalSince1970.rounded()), ("weight_kg", kg), ("fat_pct", fatPct), ("lean_kg", leanKg)]))
     }
 
-    public static func activityDayChange(day: String, activeKcal: Double?, basalKcal: Double?, steps: Double?) -> LocalChange {
+    public static func activityDayChange(day: String, activeKcal: Double?, basalKcal: Double?, steps: Double?,
+                                         exerciseMin: Double? = nil, restingHR: Double? = nil, hrv: Double? = nil, vo2max: Double? = nil) -> LocalChange {
         LocalChange(type: .activityDay, id: "day:\(day)", op: .upsert,
-                    data: object([("active_kcal", activeKcal), ("basal_kcal", basalKcal), ("steps", steps.map { $0.rounded() })],
+                    data: object([("active_kcal", activeKcal), ("basal_kcal", basalKcal), ("steps", steps.map { $0.rounded() }),
+                                  ("exercise_min", exerciseMin), ("resting_hr", restingHR), ("hrv", hrv), ("vo2max", vo2max)],
                                  extra: ["day": .string(day)]))
     }
 

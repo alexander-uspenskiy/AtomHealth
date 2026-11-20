@@ -44,7 +44,7 @@ def test_feed_joins_days_workouts_and_intake():
     now = time.time()
     start = int(now) - 7200
     sync.apply_batch(db, [
-        env("activity_day", f"day:{day(1)}", 1, day=day(1), active_kcal=640.4, basal_kcal=1700, steps=9100),
+        env("activity_day", f"day:{day(1)}", 1, day=day(1), active_kcal=640.4, basal_kcal=1700, steps=9100, exercise_min=41.2, resting_hr=57.4, hrv=48.5, vo2max=43.64),
         env("activity_day", f"day:{day(0)}", 1, day=day(0), active_kcal=100, basal_kcal=400, steps=800),
         env("nutrition_day", f"day:{day(1)}", 1, day=day(1), kcal=300),
         env("workout", "w-1", 1, start_ts=start, end_ts=start + 1800, type="37", kcal=300.6, distance_m=5000),
@@ -58,6 +58,7 @@ def test_feed_joins_days_workouts_and_intake():
     assert [d["day"] for d in f["days"]] == [day(1), day(0)] and f["today"] == day(0)
     y = f["days"][0]
     assert (y["active_kcal"], y["basal_kcal"], y["steps"], y["other_kcal"]) == (640, 1700, 9100, 300)
+    assert (y["exercise_min"], y["resting_hr"], y["hrv"], y["vo2max"]) == (41, 57, 48, 43.6)
     assert y["logged_kcal"] == 800      # pending meals are not counted
     assert "logged_kcal" not in f["days"][1]
     w = f["workouts"]
