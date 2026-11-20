@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Colours and small building blocks shared by the screens. The zone palette matches the Mac dashboard (`--z1…--z6`).
 enum Theme {
-    static let accent = Color(light: 0x4F46E5, dark: 0x8B8CF8)
+    static let accent = Color(light: 0x1D5FC0, dark: 0x5B9BF0)   // brand blue; actions, selection, links
     static let good = Color(hex: 0x22B573)
 
     static func zone(_ cls: String) -> Color {

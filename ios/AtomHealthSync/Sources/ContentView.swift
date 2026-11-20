@@ -9,11 +9,14 @@ struct ContentView: View {
         Group {
             if model.phase == .unpaired {
                 NavigationStack {
-                    Form {
-                        welcome
-                        pairing
-                        if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            welcome
+                            pairing
+                            if let e = model.error { Card { Text(e).foregroundStyle(.red).font(.footnote) } }
+                        }.padding(16)
                     }
+                    .background(Color(.systemGroupedBackground))
                     .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 }
             } else {
@@ -21,13 +24,14 @@ struct ContentView: View {
                     OverviewView(model: model).toolbar(.hidden, for: .tabBar).tag(AppModel.Tab.overview)
                     ChatView(model: model).toolbar(.hidden, for: .tabBar).tag(AppModel.Tab.chat)
                     NavigationStack {
-                        Form {
-                            synced
-                            if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
+                        ScrollView {
+                            VStack(spacing: 14) {
+                                synced
+                                if let e = model.error { Card { Text(e).foregroundStyle(.red).font(.footnote) } }
+                            }.padding(16)
                         }
-                        .navigationTitle("Sync")
-                        .brandedToolbar()
                         .appTabBar(model)
+                        .brandedScreen(title: "Sync")
                     }
                     .toolbar(.hidden, for: .tabBar).tag(AppModel.Tab.sync)
                 }
@@ -51,45 +55,53 @@ struct ContentView: View {
 
     /// First screen: the brand, in full, above the pairing steps.
     var welcome: some View {
-        Section {
-            VStack(spacing: 10) {
-                BrandMark(size: 84).shadow(color: Brand.indigo.opacity(0.35), radius: 14, y: 6)
-                (Text("Atom").fontWeight(.bold) + Text("Health").fontWeight(.regular)).font(.system(size: 30, design: .rounded))
-                Text("Your weight, activity and meals in one private place.").font(.subheadline).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 12)
-            .accessibilityElement(children: .combine)
+        VStack(spacing: 10) {
+            BrandMark(size: 84).shadow(color: Brand.indigo.opacity(0.35), radius: 14, y: 6)
+            (Text("Atom").fontWeight(.bold) + Text("Health").fontWeight(.regular)).font(.system(size: 30, design: .rounded))
+            Text("Your weight, activity and meals in one private place.").font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .listRowBackground(Color.clear)
+        .frame(maxWidth: .infinity).padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
     }
 
     var pairing: some View {
-        Section("Pair with your Mac") {
-            Text("On the Mac run `python -m atomhealth.relay pair-phone`, then paste the code here.").font(.footnote)
+        Card(title: "Pair with your Mac", subtitle: "On the Mac run `python -m atomhealth.relay pair-phone`, then paste the code here.") {
             TextField("ahpair1:…", text: $code, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled()
                 .font(.system(.footnote, design: .monospaced)).lineLimit(3...6)
-            Button("Paste from clipboard") { code = UIPasteboard.general.string ?? "" }
+                .padding(10).background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Button("Paste from clipboard") { code = UIPasteboard.general.string ?? "" }.font(.subheadline.weight(.semibold))
             Button("Pair") {
                 model.pair(code: code)
                 if model.phase == .paired { code = ""; UIPasteboard.general.string = ""; Task { await model.start() } }
-            }.disabled(code.isEmpty)
+            }.buttonStyle(BrandButtonStyle()).disabled(code.isEmpty).opacity(code.isEmpty ? 0.5 : 1)
         }
     }
 
     @ViewBuilder var synced: some View {
-        Section("Status") {
-            LabeledContent("State", value: model.status)
-            LabeledContent("Last sync", value: model.lastSync.map { $0.formatted(.relative(presentation: .named)) } ?? "never")
-            LabeledContent("Waiting to send", value: "\(model.pending)")
-            if let r = model.lastReport {
-                LabeledContent("Last cycle", value: "in \(r.pulled), out \(r.pushed), skipped \(r.stale + r.bad)")
+        BrandHero {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SYNC STATUS").font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
+                Text(model.status).font(.system(size: 26, weight: .bold, design: .rounded))
+                Text("Last sync " + (model.lastSync.map { $0.formatted(.relative(presentation: .named)) } ?? "never"))
+                    .font(.caption).foregroundStyle(.white.opacity(0.9))
             }
-            Button(model.busy ? "Syncing…" : "Sync now") { Task { await model.syncNow() } }.disabled(model.busy)
         }
-        Section {
-            Button("Unpair this phone", role: .destructive) { model.unpair() }
-        } footer: { Text("Removes the token and data key from this phone. Health data stays where it is.") }
+        Card(title: "Details") {
+            row("Waiting to send", "\(model.pending)")
+            if let r = model.lastReport { Divider(); row("Last cycle", "in \(r.pulled), out \(r.pushed), skipped \(r.stale + r.bad)") }
+            Button(model.busy ? "Syncing…" : "Sync now") { Task { await model.syncNow() } }
+                .buttonStyle(BrandButtonStyle()).disabled(model.busy).opacity(model.busy ? 0.6 : 1)
+        }
+        Card {
+            Button("Unpair this phone", role: .destructive) { model.unpair() }.font(.headline)
+            Text("Removes the token and data key from this phone. Health data stays where it is.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func row(_ k: String, _ v: String) -> some View {
+        HStack { Text(k).foregroundStyle(.secondary); Spacer(); Text(v).fontWeight(.semibold).monospacedDigit() }.font(.subheadline)
     }
 }
 
@@ -141,7 +153,7 @@ struct AppTabBar: View {
                     }
                 Text("Chat").font(.caption2.weight(.bold))
             }
-            .foregroundStyle(Color.secondary)
+            .foregroundStyle(Theme.accent)
             .frame(maxWidth: .infinity, minHeight: 48)
             .contentShape(Rectangle())
         }
@@ -155,10 +167,9 @@ struct AppTabBar: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 28)).foregroundStyle(.white)
                         .frame(width: 66, height: 66)
-                        .background(LinearGradient(colors: [Color(hex: 0x4F46E5), Color(hex: 0x7C3AED)],
-                                                   startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+                        .background(Brand.gradient, in: Circle())
                         .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: on ? 5 : 3))
-                        .shadow(color: Theme.accent.opacity(on ? 0.55 : 0.35), radius: on ? 12 : 8, y: 4)
+                        .shadow(color: Brand.indigo.opacity(on ? 0.55 : 0.35), radius: on ? 12 : 8, y: 4)
                         .overlay(alignment: .bottomTrailing) {      // is the Mac there? (green / grey / orange / red)
                             TimelineView(.periodic(from: .now, by: 3)) { ctx in
                                 Circle().fill(model.chatStatus(at: ctx.date).color).frame(width: 18, height: 18)

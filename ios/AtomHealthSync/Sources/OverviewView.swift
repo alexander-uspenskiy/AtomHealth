@@ -49,10 +49,8 @@ struct OverviewView: View {
                     .padding(16)
                 }
             }
-            .background(Color(.systemGroupedBackground))
             .appTabBar(model)
-            .navigationTitle("Overview")
-            .brandedToolbar()
+            .brandedScreen(title: "Overview")
             .refreshable { await model.syncNow() }
         }
     }
@@ -65,13 +63,13 @@ struct OverviewView: View {
             Text("The Overview appears after the Mac's next sync, within a few minutes. Pull down to check now.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button(model.busy ? "Syncing…" : "Sync now") { Task { await model.syncNow() } }
-                .buttonStyle(.borderedProminent).disabled(model.busy)
+                .buttonStyle(BrandButtonStyle()).frame(maxWidth: 240).disabled(model.busy)
         }
         .frame(maxWidth: .infinity).padding(.top, 80)
     }
 
     private func hero(_ r: DashboardSnapshot.Reading, _ s: DashboardSnapshot) -> some View {
-        HStack(alignment: .center) {
+        BrandHero { HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("LATEST READING").font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -85,11 +83,7 @@ struct OverviewView: View {
                 if let b = r.bmi { Text("BMI \(Fmt.num(b, 1))").font(.caption.weight(.semibold)) }
                 if let f = r.fatPct { Text("Body fat \(Fmt.num(f, 1))%").font(.caption.weight(.semibold)) }
             }
-        }
-        .foregroundStyle(.white)
-        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 14)
-        .background(Brand.gradient,
-                    in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        } }
     }
 
     private func workouts(_ list: [HealthSummary.Workout]) -> some View {

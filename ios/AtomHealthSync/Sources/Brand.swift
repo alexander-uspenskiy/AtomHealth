@@ -37,8 +37,31 @@ struct BrandLockup: View {
 }
 
 extension View {
-    /// Puts the app icon and the AtomHealth name at the leading edge of a large-title navigation bar (Overview, Sync).
-    func brandedToolbar() -> some View {
-        toolbar { ToolbarItem(placement: .topBarLeading) { BrandLockup(markSize: 26, font: .subheadline) } }
+    /// The one navigation bar every main screen (Overview, Chat, Sync) uses: inline title, app icon + name at the leading
+    /// edge, grouped-background canvas. Do not give a screen its own bar style.
+    func brandedScreen(title: String) -> some View {
+        self.background(Color(.systemGroupedBackground))
+            .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { BrandLockup(markSize: 26, font: .subheadline) } }
+    }
+}
+
+/// The gradient banner at the top of a screen (Overview: latest reading, Sync: connection state).
+struct BrandHero<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        content.foregroundStyle(.white)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 14)
+            .background(Brand.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+/// A full-width brand-gradient button (primary actions).
+struct BrandButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.font(.headline).foregroundStyle(.white)
+            .frame(maxWidth: .infinity).padding(.vertical, 13)
+            .background(Brand.gradient, in: Capsule())
+            .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }

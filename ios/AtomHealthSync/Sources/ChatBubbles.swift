@@ -67,7 +67,7 @@ struct MessageBubble: View {
                     meta
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(mine ? Theme.accent : Color(.secondarySystemGroupedBackground),
+                .background(mine ? AnyShapeStyle(Brand.gradient) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .contextMenu {
                     if !plain.isEmpty { Button { UIPasteboard.general.string = plain } label: { Label("Copy", systemImage: "doc.on.doc") } }

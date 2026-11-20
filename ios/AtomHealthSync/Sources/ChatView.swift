@@ -70,15 +70,10 @@ struct ChatView: View {
                 tray
                 composer
             }
-            .background(Color(.systemGroupedBackground))
             .appTabBar(model)
             .overlay(alignment: .top) { toastView }
-            .navigationTitle("Coach").navigationBarTitleDisplayMode(.inline)
+            .brandedScreen(title: "Coach")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { focused = false; model.tab = .overview } label: { Label("Overview", systemImage: "chevron.left") }
-                        .accessibilityLabel("Back to Overview")
-                }
                 ToolbarItem(placement: .principal) { header }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -129,7 +124,7 @@ struct ChatView: View {
         TimelineView(.periodic(from: .now, by: 2)) { ctx in
             let s = status(at: ctx.date)
             VStack(spacing: 1) {
-                HStack(spacing: 6) { BrandMark(size: 18); Text("Coach").font(.headline) }
+                Text("Coach").font(.headline)
                 HStack(spacing: 5) {
                     Circle().fill(s.color).frame(width: 7, height: 7)
                     Text(s.label).font(.caption2).foregroundStyle(.secondary)
@@ -230,7 +225,7 @@ struct ChatView: View {
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Menu { photoActions } label: {
                 Label("Add a meal photo", systemImage: "camera.fill").font(.headline).padding(.horizontal, 22).padding(.vertical, 12)
-                    .foregroundStyle(.white).background(Theme.accent, in: Capsule())
+                    .foregroundStyle(.white).background(Brand.gradient, in: Capsule())
             }
             HStack {
                 ForEach(["/start", "/today"], id: \.self) { c in
@@ -320,7 +315,7 @@ struct ChatView: View {
         HStack(alignment: .bottom, spacing: 8) {
             Menu { photoActions } label: {
                 Image(systemName: "camera.fill").font(.system(size: 18)).foregroundStyle(.white)
-                    .frame(width: 40, height: 40).background(Theme.accent, in: Circle())
+                    .frame(width: 40, height: 40).background(Brand.gradient, in: Circle())
             }
             .disabled(staged.count >= ChatWire.maxPhotos).accessibilityLabel("Attach a meal photo")
 
@@ -336,7 +331,7 @@ struct ChatView: View {
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.system(size: 32)) }
-                .foregroundStyle(canSend ? Theme.accent : Color.secondary.opacity(0.4)).disabled(!canSend).accessibilityLabel("Send")
+                .foregroundStyle(canSend ? AnyShapeStyle(Brand.gradient) : AnyShapeStyle(Color.secondary.opacity(0.4))).disabled(!canSend).accessibilityLabel("Send")
         }
         .padding(.horizontal, 10).padding(.vertical, 8).background(.bar)
     }
