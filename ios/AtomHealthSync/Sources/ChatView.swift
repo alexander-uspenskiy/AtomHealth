@@ -129,7 +129,7 @@ struct ChatView: View {
         TimelineView(.periodic(from: .now, by: 2)) { ctx in
             let s = status(at: ctx.date)
             VStack(spacing: 1) {
-                Text("Coach").font(.headline)
+                HStack(spacing: 6) { BrandMark(size: 18); Text("Coach").font(.headline) }
                 HStack(spacing: 5) {
                     Circle().fill(s.color).frame(width: 7, height: 7)
                     Text(s.label).font(.caption2).foregroundStyle(.secondary)

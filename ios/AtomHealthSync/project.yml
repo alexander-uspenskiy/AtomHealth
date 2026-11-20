@@ -32,11 +32,11 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: Atom Health
+        CFBundleDisplayName: AtomHealth
         UILaunchScreen: {}
-        NSCameraUsageDescription: Atom Health takes meal photos for the chat with your AtomHealth coach. Photos are resized, then sent end-to-end encrypted to your Mac.
-        NSHealthShareUsageDescription: Atom Health reads your weight, workouts, activity, sleep, heart rate and nutrition from Apple Health to show them on the Overview and to share them with your own AtomHealth Mac app.
-        NSHealthUpdateUsageDescription: Atom Health writes weights and meals logged in AtomHealth into Apple Health.
+        NSCameraUsageDescription: AtomHealth takes meal photos for the chat with your AtomHealth coach. Photos are resized, then sent end-to-end encrypted to your Mac.
+        NSHealthShareUsageDescription: AtomHealth reads your weight, workouts, activity, sleep, heart rate and nutrition from Apple Health to show them on the Overview and to share them with your own AtomHealth Mac app.
+        NSHealthUpdateUsageDescription: AtomHealth writes weights and meals logged in AtomHealth into Apple Health.
         UIBackgroundModes: [fetch, processing]
         BGTaskSchedulerPermittedIdentifiers: [com.alex.atomhealthsync.refresh]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

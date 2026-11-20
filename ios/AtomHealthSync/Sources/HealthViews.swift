@@ -210,7 +210,7 @@ struct HealthEmptyCard: View {
     let refresh: () -> Void
     var body: some View {
         Card(title: "Apple Health", subtitle: "Steps, sleep, heart rate and workouts appear here") {
-            Text("No Health data yet. If you have not allowed access, open Settings › Health › Data Access & Devices › Atom Health and turn on everything. Health data is also unreadable while the phone is locked.")
+            Text("No Health data yet. If you have not allowed access, open Settings › Health › Data Access & Devices › AtomHealth and turn on everything. Health data is also unreadable while the phone is locked.")
                 .font(.footnote).foregroundStyle(.secondary)
             Button(busy ? "Reading…" : "Read Health now", action: refresh).buttonStyle(.bordered).disabled(busy)
         }

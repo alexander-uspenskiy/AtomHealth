@@ -42,7 +42,11 @@ body { margin:0; background:var(--bg); color:var(--text);
 .top { position:sticky; top:0; z-index:20; background:color-mix(in srgb,var(--surface) 86%,transparent); backdrop-filter:blur(14px);
   border-bottom:1px solid var(--border); }
 .top-in { max-width:1200px; margin:0 auto; padding:10px 20px; display:flex; align-items:center; gap:18px; }
-.brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:16px; letter-spacing:-.01em; }
+.brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:16px; letter-spacing:-.01em; color:var(--text); text-decoration:none; }
+.brand .wm { font-weight:800; letter-spacing:-.02em; } .brand .wm b { font-weight:400; color:var(--text2); }
+.top { border-image:linear-gradient(90deg,#14b8a6,#4338ca) 1; border-bottom-width:2px; }
+.foot { max-width:1200px; margin:0 auto; padding:18px 20px 36px; display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12.5px; border-top:1px solid var(--border); }
+.foot img { border-radius:6px; opacity:.9; } .foot b { color:var(--text2); font-weight:700; }
 .logo { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,var(--accent),#22b5c9); display:grid; place-items:center; color:#fff; }
 .tabs { display:flex; gap:2px; background:var(--surface2); border:1px solid var(--border); padding:3px; border-radius:11px; margin:0 auto 0 8px; overflow-x:auto; }
 .tabs { scrollbar-width:none; } .tabs::-webkit-scrollbar { display:none; }
@@ -283,7 +287,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
 </head>
 <body>
 <header class="top"><div class="top-in">
-  <div class="brand"><img src="/assets/icon.svg?v=2" width="34" height="34" alt="" style="border-radius:10px">AtomHealth</div>
+  <a class="brand" href="#overview" aria-label="AtomHealth, go to Overview"><img src="/assets/icon.svg?v=2" width="34" height="34" alt="" style="border-radius:10px"><span class="wm">Atom<b>Health</b></span></a>
   <nav class="tabs" role="tablist" id="tabs">
     <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
     <button role="tab" data-tab="trends" aria-selected="false">Trends</button>
@@ -490,6 +494,7 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
   </div>
 </section>
 </main>
+<footer class="foot"><img src="/assets/icon.svg?v=2" width="20" height="20" alt=""><span><b>AtomHealth</b> · private by design: your data stays on your Mac and syncs end-to-end encrypted to your phone. Informational only, not medical advice.</span></footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
@@ -527,6 +532,7 @@ function showTab(name) {
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
   document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== 'v-' + name);
   try { history.replaceState(null, '', '#' + name); } catch (e) {}
+  const tb = document.querySelector(`#tabs button[data-tab="${name}"]`); document.title = (tb ? tb.textContent + ' · ' : '') + 'AtomHealth';
   if (name === 'trends') renderCharts();
   if (name === 'overview' && S) renderActCard();
   if (name === 'activity' && S) renderActivity();

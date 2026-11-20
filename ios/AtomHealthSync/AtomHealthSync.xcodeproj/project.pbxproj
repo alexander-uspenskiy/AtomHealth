@@ -11,6 +11,7 @@
 		194D8AFC53FE1275F34D9FAE /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C111BC42161FC15AF3A9C6A /* ChatView.swift */; };
 		408598D47357B2A45849DBA7 /* ChatBubbles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2938CA8AE818DEA7030D537E /* ChatBubbles.swift */; };
 		503D76C4DEAD09AD299A02DA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC9426DB689E021E21FA8874 /* Theme.swift */; };
+		59EF1298056EEF7315150D5E /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6282DB1CDF51E54A4A32FCB /* Brand.swift */; };
 		6A33938A457E9A1773CFEEF2 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B407DFDDD6FD2B78EA23AE92 /* Keychain.swift */; };
 		7F3493489255404B4E2D6F1C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D003CD3E0A30B0700FBC59 /* ContentView.swift */; };
 		82B50583CF172D26EFEDF8C8 /* AtomHealthKit in Frameworks */ = {isa = PBXBuildFile; productRef = E3FD61B1D50E0930CD4D215E /* AtomHealthKit */; };
@@ -36,6 +37,7 @@
 		C9BE69E778A2889022AB7445 /* AtomHealthSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AtomHealthSync.entitlements; sourceTree = "<group>"; };
 		CC9426DB689E021E21FA8874 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		DC33DDAB9F95B464DF4F0660 /* AtomHealthSyncApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtomHealthSyncApp.swift; sourceTree = "<group>"; };
+		F6282DB1CDF51E54A4A32FCB /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@
 				75D1BFF380D55F890F1935C1 /* Assets.xcassets */,
 				C9BE69E778A2889022AB7445 /* AtomHealthSync.entitlements */,
 				DC33DDAB9F95B464DF4F0660 /* AtomHealthSyncApp.swift */,
+				F6282DB1CDF51E54A4A32FCB /* Brand.swift */,
 				2938CA8AE818DEA7030D537E /* ChatBubbles.swift */,
 				1C111BC42161FC15AF3A9C6A /* ChatView.swift */,
 				77D003CD3E0A30B0700FBC59 /* ContentView.swift */,
@@ -174,6 +177,7 @@
 			files = (
 				993EBB7D8A8DB674DF6C2379 /* AppModel.swift in Sources */,
 				CC29A660E93F158ED002DA1F /* AtomHealthSyncApp.swift in Sources */,
+				59EF1298056EEF7315150D5E /* Brand.swift in Sources */,
 				408598D47357B2A45849DBA7 /* ChatBubbles.swift in Sources */,
 				194D8AFC53FE1275F34D9FAE /* ChatView.swift in Sources */,
 				7F3493489255404B4E2D6F1C /* ContentView.swift in Sources */,

@@ -52,6 +52,7 @@ struct OverviewView: View {
             .background(Color(.systemGroupedBackground))
             .appTabBar(model)
             .navigationTitle("Overview")
+            .brandedToolbar()
             .refreshable { await model.syncNow() }
         }
     }
@@ -87,8 +88,7 @@ struct OverviewView: View {
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 14)
-        .background(LinearGradient(colors: [Color(hex: 0x4F46E5), Color(hex: 0x2563EB), Color(hex: 0x0EA5A4)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+        .background(Brand.gradient,
                     in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 

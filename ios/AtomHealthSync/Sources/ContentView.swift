@@ -10,10 +10,11 @@ struct ContentView: View {
             if model.phase == .unpaired {
                 NavigationStack {
                     Form {
+                        welcome
                         pairing
                         if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
                     }
-                    .navigationTitle("Atom Health")
+                    .navigationTitle("").navigationBarTitleDisplayMode(.inline)
                 }
             } else {
                 TabView(selection: Binding(get: { model.tab }, set: { model.tab = $0 })) {
@@ -25,6 +26,7 @@ struct ContentView: View {
                             if let e = model.error { Section { Text(e).foregroundStyle(.red).font(.footnote) } }
                         }
                         .navigationTitle("Sync")
+                        .brandedToolbar()
                         .appTabBar(model)
                     }
                     .toolbar(.hidden, for: .tabBar).tag(AppModel.Tab.sync)
@@ -45,6 +47,21 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, p in if p == .active { Task { await model.syncNow() } } }
+    }
+
+    /// First screen: the brand, in full, above the pairing steps.
+    var welcome: some View {
+        Section {
+            VStack(spacing: 10) {
+                BrandMark(size: 84).shadow(color: Brand.indigo.opacity(0.35), radius: 14, y: 6)
+                (Text("Atom").fontWeight(.bold) + Text("Health").fontWeight(.regular)).font(.system(size: 30, design: .rounded))
+                Text("Your weight, activity and meals in one private place.").font(.subheadline).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .accessibilityElement(children: .combine)
+        }
+        .listRowBackground(Color.clear)
     }
 
     var pairing: some View {
