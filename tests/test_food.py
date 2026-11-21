@@ -255,3 +255,29 @@ def test_store_meal_overrides_model_meal_type(tmp_path):
     mid = food.store_meal(db, food.validate({**GOOD, "meal_type": "breakfast"}), photos=None, caption="", ts=ts)
     assert db.execute("SELECT meal_type FROM meals WHERE id=?", (mid,)).fetchone()[0] == "dinner"
     assert food.delete_meal(db, mid) and not food.delete_meal(db, mid)
+
+
+def test_reanalyze_sends_previous_items_without_photos():
+    db = _mem_db()
+    mid = food.store_meal(db, food.validate(GOOD), photos=[_jpeg()], caption="lunch", ts=1_700_000_000)
+    fixed = json.loads(json.dumps(GOOD))
+    fixed["items"][0]["grams"] = 150
+    calls = []
+
+    async def handler(request):
+        calls.append(await request.json())
+        return web.json_response({"choices": [{"message": {"content": json.dumps(fixed)}}]})
+
+    async def go():
+        app = web.Application()
+        app.router.add_post("/v1/chat/completions", handler)
+        async with TestServer(app) as srv:
+            c = llm.LLM(base_url=str(srv.make_url("/v1")), model="m", api_key="k", timeout=5)
+            return await food.reanalyze_meal(db, mid, "rice was 150 g", llm=c)
+
+    a = asyncio.run(go())
+    user = calls[0]["messages"][1]["content"]
+    assert isinstance(user, str) and "Previous result" in user and '"rice"' in user and "rice was 150 g" in user
+    assert a["items"][0]["grams"] == 150
+    assert db.execute("SELECT grams FROM meal_items WHERE meal_id=? ORDER BY id", (mid,)).fetchone()[0] == 150
+    assert db.execute("SELECT caption FROM meals WHERE id=?", (mid,)).fetchone()[0] == "rice was 150 g"

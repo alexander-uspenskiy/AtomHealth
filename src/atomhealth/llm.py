@@ -57,13 +57,13 @@ class LLM:
         self.api_key = api_key or s["api_key"]
         self.timeout = timeout or s["timeout"]
 
-    async def chat(self, messages, *, max_tokens=1500, temperature=0.2, thinking=False, retries=2) -> str:
+    async def chat(self, messages, *, max_tokens=1500, temperature=0.2, thinking=False, retries=2, via_atom=False) -> str:
         """Return the assistant text. Thinking is off by default: it burns tokens and latency.
-        Requests that carry images go through the Atom AtomHealth agent when ATOM_BASE_URL is set,
-        and fall back to the local model if Atom fails."""
+        Requests that carry images (or set via_atom, e.g. text-only meal corrections) go through the Atom
+        AtomHealth agent when ATOM_BASE_URL is set, and fall back to the local model if Atom fails."""
         if config.atom_settings()["base_url"]:
             task, images = _atom_task(messages)
-            if images:
+            if images or via_atom:
                 try:
                     return await self._atom_run(task, images)
                 except LLMError:

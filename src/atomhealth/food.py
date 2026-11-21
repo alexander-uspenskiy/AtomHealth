@@ -261,18 +261,44 @@ def meal_dishes(db, meal_id: int) -> list:
 
 
 async def reanalyze_meal(db, meal_id: int, text: str, llm: LLM | None = None) -> dict:
-    """Correct a stored meal: re-analyse its photos together with the user's description of what it really
-    was (the new text replaces the old caption). Keeps the time and saved/pending status."""
+    """Correct a stored meal. The agent gets the current items plus the user's correction and edits only what
+    the correction names (no photo is re-sent: faster, and the rest of the meal stays as it was). Keeps the
+    time and saved/pending status."""
     row = db.execute("SELECT status FROM meals WHERE id=?", (meal_id,)).fetchone()
     if not row or row[0] == "discarded":
         raise AnalysisError("meal not found")
-    photos = [bytes(r[0]) for r in db.execute("SELECT data FROM meal_photos WHERE meal_id=? ORDER BY idx", (meal_id,))]
-    analysis = await analyze_meal(photos, text.strip(), llm=llm)
+    text = text.strip()
+    prev = [{"name": r["name"], "grams": r["grams"], "kcal": r["kcal"], "protein_g": r["protein_g"],
+             "carbs_g": r["carbs_g"], "fat_g": r["fat_g"]}
+            for r in db.execute("SELECT * FROM meal_items WHERE meal_id=? ORDER BY id", (meal_id,))]
+    if not prev:  # nothing to edit (should not happen): analyse the stored photos with the new text instead
+        photos = [bytes(r[0]) for r in db.execute("SELECT data FROM meal_photos WHERE meal_id=? ORDER BY idx", (meal_id,))]
+        analysis = await analyze_meal(photos, text, llm=llm)
+    else:
+        analysis = await correct_analysis(prev, text, llm=llm)
     if not analysis["is_food"]:
         raise AnalysisError("that does not describe food")
-    _apply_analysis(db, meal_id, analysis, text.strip())
+    _apply_analysis(db, meal_id, analysis, text)
     db.commit()
     return analysis
+
+
+async def correct_analysis(prev_items: list[dict], correction: str, llm: LLM | None = None) -> dict:
+    """Edit a previous result with the user's correction (text only). Returns a validated analysis dict."""
+    llm = llm or LLM()
+    prompt = ("Meal analysis correction. Edit the previous result instead of re-estimating: change only what the "
+              "correction says and keep every other item as it was. Same JSON schema, nothing else.\n"
+              f"Previous result: {json.dumps({'is_food': True, 'items': prev_items})}\n"
+              f"User correction: {correction}")
+    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
+    last = None
+    for _ in range(2):
+        raw = extract_json(await llm.chat(msgs, max_tokens=1500, temperature=0.2, via_atom=True))
+        try:
+            return validate(raw)
+        except AnalysisError as e:
+            last = e
+    raise last
 
 
 def day_start(ts=None) -> int:
