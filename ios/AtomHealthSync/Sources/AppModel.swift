@@ -117,7 +117,7 @@ final class AppModel {
         guard let c = config, !busy else { return }
         busy = true; defer { busy = false }
         do {
-            if health { await reader.refresh(); await refreshHealth() }
+            if health { await boundedHealthRefresh() }
             let engine = SyncEngine(deviceID: c.deviceID, key: c.key, relay: try RelayClient(url: c.url, token: c.token),
                                     store: store, sink: sink)
             lastReport = try await engine.cycle(); lastSync = Date(); error = nil; status = "Up to date"
@@ -128,6 +128,17 @@ final class AppModel {
         pending = await store.pending().count
         dashboard = await dashboardStore.load()
         chat = await chatStore.snapshot()
+    }
+
+    /// Apple Health reads never time out by themselves (locked phone, unanswered permission prompt), and a sync waits
+    /// for them before it talks to the Mac. Give them 20 s, then carry on; a late answer still lands in the cache.
+    private func boundedHealthRefresh() async {
+        let work = Task { await reader.refresh(); await refreshHealth() }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            let once = Once(c)
+            Task { await work.value; once.fire() }
+            Task { try? await Task.sleep(for: .seconds(20)); once.fire() }
+        }
     }
 
     /// Re-reads Apple Health for the Overview. An empty answer (Health locked or access off) never replaces numbers we already have.
@@ -239,4 +250,13 @@ final class AppModel {
     func deleteChatMessage(_ id: String) async { await chatStore.remove(id: id); chat = await chatStore.snapshot() }
     func clearChat() async { await chatStore.clear(); chat = await chatStore.snapshot() }
     nonisolated func mediaURL(_ name: String, thumbnail: Bool = false) -> URL { chatStore.mediaURL(name, thumbnail: thumbnail) }
+}
+
+
+/// Resumes a continuation exactly once, whichever of two racing tasks gets there first.
+private final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var c: CheckedContinuation<Void, Never>?
+    init(_ c: CheckedContinuation<Void, Never>) { self.c = c }
+    func fire() { lock.lock(); let x = c; c = nil; lock.unlock(); x?.resume() }
 }

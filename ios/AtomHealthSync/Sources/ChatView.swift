@@ -75,15 +75,9 @@ struct ChatView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
             .overlay(alignment: .top) { toastView }
-            .brandedScreen(title: "Coach")
+            .brandedScreen(title: "Coach", back: keyboardUp ? { model.tab = .overview } : nil)
             .toolbar {
                 ToolbarItem(placement: .principal) { header }
-                if keyboardUp {            // the bottom bar is hidden under the keyboard: a way back in the header
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { model.tab = .overview } label: { Image(systemName: "chevron.left") }
-                            .accessibilityLabel("Back to Overview")
-                    }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { showCommands = true } label: { Label("Commands", systemImage: "slash.circle") }

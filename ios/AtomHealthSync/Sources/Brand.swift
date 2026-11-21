@@ -39,10 +39,25 @@ struct BrandLockup: View {
 extension View {
     /// The one navigation bar every main screen (Overview, Chat, Sync) uses: inline title, app icon + name at the leading
     /// edge, grouped-background canvas. Do not give a screen its own bar style.
-    func brandedScreen(title: String) -> some View {
+    /// `back` (Chat while the keyboard hides the tab bar) adds a back chevron and drops the wordmark, leaving the
+    /// centre title room: one tidy leading group instead of three crowded items.
+    func brandedScreen(title: String, back: (() -> Void)? = nil) -> some View {
         self.background(Color(.systemGroupedBackground))
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { BrandLockup(markSize: 26, font: .subheadline) } }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if let back {
+                        HStack(spacing: 4) {
+                            Button(action: back) {
+                                Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
+                                    .frame(width: 36, height: 36).contentShape(Rectangle())
+                            }
+                            .accessibilityLabel("Back to Overview")
+                            BrandMark(size: 26)
+                        }
+                    } else { BrandLockup(markSize: 26, font: .subheadline) }
+                }
+            }
     }
 }
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var model = AppModel.shared
     @State private var code = ""
+    @State private var confirmUnpair = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -27,7 +28,6 @@ struct ContentView: View {
                         ScrollView {
                             VStack(spacing: 14) {
                                 synced
-                                if let e = model.error { Card { Text(e).foregroundStyle(.red).font(.footnote) } }
                             }.padding(16)
                         }
                         .appTabBar(model)
@@ -82,21 +82,35 @@ struct ContentView: View {
         BrandHero {
             VStack(alignment: .leading, spacing: 4) {
                 Text("SYNC STATUS").font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
-                Text(model.status).font(.system(size: 26, weight: .bold, design: .rounded))
+                Text(model.busy ? "Syncing…" : model.status).font(.system(size: 26, weight: .bold, design: .rounded))
                 Text("Last sync " + (model.lastSync.map { $0.formatted(.relative(presentation: .named)) } ?? "never"))
                     .font(.caption).foregroundStyle(.white.opacity(0.9))
             }
         }
         Card(title: "Details") {
             row("Waiting to send", "\(model.pending)")
+            Divider(); row("Your Mac", macLabel)
+            Divider(); row("Apple Health", (model.health?.isEmpty ?? true) ? "No data yet: check access" : "Reading")
+            if let e = model.error { Divider(); Text(e).foregroundStyle(.red).font(.footnote) }
             if let r = model.lastReport { Divider(); row("Last cycle", "in \(r.pulled), out \(r.pushed), skipped \(r.stale + r.bad)") }
-            Button(model.busy ? "Syncing…" : "Sync now") { Task { await model.syncNow() } }
-                .buttonStyle(BrandButtonStyle()).disabled(model.busy).opacity(model.busy ? 0.6 : 1)
+            Button { Task { await model.syncNow() } } label: {
+                HStack(spacing: 8) { if model.busy { ProgressView().tint(.white) }; Text(model.busy ? "Syncing…" : "Sync now") }
+            }
+            .buttonStyle(BrandButtonStyle()).disabled(model.busy).opacity(model.busy ? 0.6 : 1)
         }
-        Card {
-            Button("Unpair this phone", role: .destructive) { model.unpair() }.font(.headline)
-            Text("Removes the token and data key from this phone. Health data stays where it is.")
-                .font(.caption).foregroundStyle(.secondary)
+        Button("Unpair this phone", role: .destructive) { confirmUnpair = true }
+            .font(.subheadline).frame(maxWidth: .infinity).padding(.top, 6)
+            .confirmationDialog("Unpair this phone?", isPresented: $confirmUnpair, titleVisibility: .visible) {
+                Button("Unpair", role: .destructive) { model.unpair() }
+            } message: { Text("Removes the token and data key from this phone. Health data stays where it is. You will need a new pairing code from your Mac.") }
+    }
+
+    private var macLabel: String {
+        switch model.chatStatus() {
+        case .offline: "No connection"
+        case .checking: "Checking…"
+        case .macUnreachable: "Not responding"
+        case .waiting, .working, .online: "Online"
         }
     }
 
