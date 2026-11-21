@@ -245,7 +245,20 @@ details.more > :not(summary) { margin-top:10px; }
 #v-history > .card, #v-history > .cols { margin-top:14px; }
 #v-history > :first-child { margin-top:0; }
 #v-history .cols > .card { margin-top:0; min-width:0; }
-#v-history .scroll { max-width:100%; }
+#v-history .scroll { max-width:100%; overflow-x:visible; }
+#v-history th, #v-history td { white-space:normal; padding:8px 7px; }
+#v-history td.nw, #v-history th.nw { white-space:nowrap; }
+#v-history table { table-layout:auto; }
+#v-history td.items { min-width:0; }
+.hbar { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; align-items:center; }
+.hbar input { flex:1 1 180px; width:auto; min-width:0; } .hbar select { flex:0 1 150px; width:auto; }
+.pager { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; font-size:13px; color:var(--muted); }
+.pager button { padding:6px 12px; }
+.pager button[disabled] { opacity:.4; cursor:default; }
+@media (max-width:1100px) { #v-history .c2 { display:none; } }
+#v-history .im { display:none; }
+@media (max-width:520px) { #v-history .c4 { display:none; } }
+@media (max-width:760px) { #v-history .im { display:block; font-size:12px; color:var(--text2); margin-top:2px; } #v-history .c3 { display:none; } #v-history .c1 { display:none; } #v-history .thumb { width:28px; height:28px; } }
 td.l, th.l { text-align:left; }
 td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13px; }
 .thumb { width:34px; height:34px; object-fit:cover; border-radius:8px; vertical-align:middle; margin-right:4px; background:var(--surface2); }
@@ -440,8 +453,8 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
       <input id="impFile" type="file" accept=".csv,text/csv"><div id="impMsg" class="hint"></div>
       <div style="margin-top:12px"><a href="/api/export.csv"><button class="btn ghost" type="button">Export all as CSV</button></a></div></div>
   </div>
-  <div class="card"><div class="card-h"><div><h2>Nutrition data</h2><p class="sub" id="mealCount"></p></div></div><div class="scroll" id="meals"></div></div>
-  <div class="card"><div class="card-h"><div><h2>All readings</h2><p class="sub" id="histCount"></p></div></div><div class="scroll" id="hist"></div></div>
+  <div class="card"><div class="card-h"><div><h2>Nutrition data</h2><p class="sub" id="mealCount"></p></div></div><div class="hbar"><input id="mealQ" type="search" placeholder="Search meals, items, notes" aria-label="Search meals"><select id="mealType" aria-label="Meal type"><option value="">All types</option><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snack">Snack</option></select><select id="mealStatus" aria-label="Status"><option value="">Any status</option><option value="confirmed">Saved</option><option value="pending">Pending</option></select><input id="mealFrom" type="date" aria-label="From date" style="flex:0 1 150px"><input id="mealTo" type="date" aria-label="To date" style="flex:0 1 150px"></div><div class="scroll" id="meals"></div><div class="pager" id="mealPager"></div></div>
+  <div class="card"><div class="card-h"><div><h2>All readings</h2><p class="sub" id="histCount"></p></div></div><div class="hbar"><input id="histFrom" type="date" aria-label="From date" style="flex:0 1 150px"><input id="histTo" type="date" aria-label="To date" style="flex:0 1 150px"><select id="histSrc" aria-label="Source"><option value="">All sources</option></select></div><div class="scroll" id="hist"></div><div class="pager" id="histPager"></div></div>
 </section>
 
 <!-- ============ SETTINGS ============ -->
@@ -1076,13 +1089,33 @@ document.querySelectorAll('#actRange button').forEach(b => b.onclick = () => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => S && (renderActivity(), renderActCard()));
 
 /* ---------------- history ---------------- */
-function renderHist() {
-  const R = [...S.readings].reverse();
-  $('histCount').textContent = R.length ? `${R.length} readings, newest first` : '';
-  $('hist').innerHTML = R.length ? '<table><thead><tr><th>Date</th><th>Weight</th><th>BMI</th><th>Fat %</th><th>Fat kg</th><th>Lean kg</th><th>Muscle kg</th><th>Water %</th><th>Source</th><th>Health</th><th></th></tr></thead><tbody>' +
-    R.map(r => `<tr><td>${fdt(r.ts)}</td><td><b>${fmt(r.weight, 2)}</b></td><td>${fmt(r.bmi)}</td><td>${fmt(r.fat_pct)}</td><td>${fmt(r.fat_kg)}</td><td>${fmt(r.lean_kg)}</td><td>${fmt(r.muscle_kg)}</td><td>${fmt(r.water_pct)}</td><td class="muted">${r.source}</td><td>${r.synced ? '✓' : '·'}</td><td><button class="link" onclick="del(${r.id})" aria-label="Delete reading">Delete</button></td></tr>`).join('') + '</tbody></table>'
-    : '<div class="empty">Nothing here yet.</div>';
+const PAGE = 10, PG = { hist: 0, meals: 0 };
+const dayStart = v => v ? new Date(v + 'T00:00:00').getTime() / 1000 : null;
+const dayEnd = v => v ? new Date(v + 'T00:00:00').getTime() / 1000 + 86400 : null;
+function pager(id, key, total) {
+  const pages = Math.max(1, Math.ceil(total / PAGE)); PG[key] = Math.min(PG[key], pages - 1);
+  const p = PG[key], el = $(id);
+  el.innerHTML = total > PAGE ? `<button class="btn ghost" ${p ? '' : 'disabled'} data-pg="${key}" data-d="-1">‹ Prev</button><span>Page ${p + 1} of ${pages} · ${p * PAGE + 1}–${Math.min(total, (p + 1) * PAGE)} of ${total}</span><button class="btn ghost" ${p < pages - 1 ? '' : 'disabled'} data-pg="${key}" data-d="1">Next ›</button>` : '';
+  return p * PAGE;
 }
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('button[data-pg]'); if (!b || b.disabled) return;
+  PG[b.dataset.pg] += +b.dataset.d; b.dataset.pg === 'hist' ? renderHist() : renderMeals();
+});
+function renderHist() {
+  const all = [...S.readings].reverse(), sel = $('histSrc');
+  const srcs = [...new Set(all.map(r => r.source).filter(Boolean))];
+  if (sel.options.length - 1 !== srcs.length) { const cur = sel.value; sel.innerHTML = '<option value="">All sources</option>' + srcs.map(x => `<option>${esc(x)}</option>`).join(''); sel.value = cur; }
+  const f = dayStart($('histFrom').value), t = dayEnd($('histTo').value), src = sel.value;
+  const R = all.filter(r => (!f || r.ts >= f) && (!t || r.ts < t) && (!src || r.source === src));
+  $('histCount').textContent = all.length ? (R.length === all.length ? `${all.length} readings, newest first` : `${R.length} of ${all.length} readings match`) : '';
+  const off = pager('histPager', 'hist', R.length);
+  $('hist').innerHTML = R.length ? '<table><thead><tr><th>Date</th><th>Weight</th><th class="c4">BMI</th><th>Fat %</th><th class="c1">Fat kg</th><th class="c1">Lean kg</th><th class="c2">Muscle kg</th><th class="c2">Water %</th><th class="c2">Source</th><th class="c1">Health</th><th></th></tr></thead><tbody>' +
+    R.slice(off, off + PAGE).map(r => `<tr><td>${fdt(r.ts)}</td><td><b>${fmt(r.weight, 2)}</b></td><td class="c4">${fmt(r.bmi)}</td><td>${fmt(r.fat_pct)}</td><td class="c1">${fmt(r.fat_kg)}</td><td class="c1">${fmt(r.lean_kg)}</td><td class="c2">${fmt(r.muscle_kg)}</td><td class="c2">${fmt(r.water_pct)}</td><td class="muted c2">${r.source}</td><td class="c1">${r.synced ? '✓' : '·'}</td><td><button class="link" onclick="del(${r.id})" aria-label="Delete reading">Delete</button></td></tr>`).join('') + '</tbody></table>'
+    : `<div class="empty">${all.length ? 'No readings match the filters.' : 'Nothing here yet.'}</div>`;
+}
+['histFrom', 'histTo', 'histSrc'].forEach(i => $(i).addEventListener('input', () => { PG.hist = 0; S && renderHist(); }));
+['mealQ', 'mealType', 'mealStatus', 'mealFrom', 'mealTo'].forEach(i => $(i).addEventListener('input', () => { PG.meals = 0; S && renderMeals(); }));
 // Colour by share of the daily target. "limit" nutrients (energy, carbs, fat) turn amber and red when exceeded;
 // "reach" nutrients (protein, fibre) only turn green once met and never red.
 function nState(p, kind) {
@@ -1249,15 +1282,19 @@ function renderToday() {
     : '<div class="empty" style="padding:14px">No meals today. Send a photo of your meal to the Telegram bot.</div>';
 }
 function renderMeals() {
-  const M = S.meals || [];
-  $('mealCount').textContent = M.length ? `${M.length} meals logged through the Telegram bot or the API, newest first` : '';
-  $('meals').innerHTML = M.length ? '<table><thead><tr><th class="l">Date</th><th class="l">Meal</th><th class="l">Photos</th><th>kcal</th><th>Protein</th><th>Carbs</th><th>Fat</th><th class="l">Items</th><th>Status</th><th></th></tr></thead><tbody>' +
-    M.map(m => `<tr><td class="l">${fdt(m.ts)}</td><td class="l"><b>${esc(m.type && m.type !== 'unknown' ? m.type[0].toUpperCase() + m.type.slice(1) : 'Meal')}</b>${m.caption ? `<div class="muted" style="font-size:12px">${esc(m.caption)}</div>` : ''}</td>` +
-      `<td class="l">${Array.from({ length: Math.min(m.photos, 3) }, (_, i) => `<a href="/api/food/${m.id}/photo/${i}" target="_blank"><img class="thumb" loading="lazy" src="/api/food/${m.id}/photo/${i}" alt="Meal photo"></a>`).join('')}${m.photos > 3 ? `<span class="muted">+${m.photos - 3}</span>` : ''}</td>` +
-      `<td><b>${fmt(m.kcal, 0)}</b></td><td>${fmt(m.protein_g, 0)} g</td><td>${fmt(m.carbs_g, 0)} g</td><td>${fmt(m.fat_g, 0)} g</td><td class="items">${m.items.map(i => esc(i.name) + (i.grams ? ` ${Math.round(i.grams)} g` : '')).join(', ')}</td>` +
-      `<td><span class="chip${m.status === 'pending' ? ' z4' : ''}">${m.status === 'pending' ? 'Pending' : 'Saved'}</span></td>` +
+  const all = S.meals || [], q = $('mealQ').value.trim().toLowerCase(), ty = $('mealType').value, st = $('mealStatus').value;
+  const f = dayStart($('mealFrom').value), t = dayEnd($('mealTo').value);
+  const M = all.filter(m => (!q || (m.caption || '').toLowerCase().includes(q) || (m.type || '').toLowerCase().includes(q) || m.items.some(i => (i.name || '').toLowerCase().includes(q)))
+    && (!ty || m.type === ty) && (!st || m.status === st) && (!f || m.ts >= f) && (!t || m.ts < t));
+  $('mealCount').textContent = all.length ? (M.length === all.length ? `${all.length} meals logged through the Telegram bot or the API, newest first` : `${M.length} of ${all.length} meals match`) : '';
+  const off = pager('mealPager', 'meals', M.length);
+  $('meals').innerHTML = M.length ? '<table><thead><tr><th class="l">Date</th><th class="l">Meal</th><th class="l c1">Photos</th><th>kcal</th><th>P / C / F (g)</th><th class="l c3">Items</th><th class="c2">Status</th><th></th></tr></thead><tbody>' +
+    M.slice(off, off + PAGE).map(m => `<tr><td class="l">${fdt(m.ts)}</td><td class="l"><b>${esc(m.type && m.type !== 'unknown' ? m.type[0].toUpperCase() + m.type.slice(1) : 'Meal')}</b>${m.caption ? `<div class="muted" style="font-size:12px">${esc(m.caption)}</div>` : ''}<div class="im">${m.items.map(i => esc(i.name)).join(', ')}</div></td>` +
+      `<td class="l c1">${Array.from({ length: Math.min(m.photos, 3) }, (_, i) => `<a href="/api/food/${m.id}/photo/${i}" target="_blank"><img class="thumb" loading="lazy" src="/api/food/${m.id}/photo/${i}" alt="Meal photo"></a>`).join('')}${m.photos > 3 ? `<span class="muted">+${m.photos - 3}</span>` : ''}</td>` +
+      `<td class="nw"><b>${fmt(m.kcal, 0)}</b></td><td class="nw">${fmt(m.protein_g, 0)} / ${fmt(m.carbs_g, 0)} / ${fmt(m.fat_g, 0)}</td><td class="items c3">${m.items.map(i => esc(i.name) + (i.grams ? ` ${Math.round(i.grams)} g` : '')).join(', ')}</td>` +
+      `<td class="c2"><span class="chip${m.status === 'pending' ? ' z4' : ''}">${m.status === 'pending' ? 'Pending' : 'Saved'}</span></td>` +
       `<td><button class="link" onclick="delMeal(${m.id})" aria-label="Delete meal">Delete</button></td></tr>`).join('') + '</tbody></table>'
-    : '<div class="empty">No meals yet. Send a photo of your meal to the Telegram bot.</div>';
+    : `<div class="empty">${all.length ? 'No meals match the filters.' : 'No meals yet. Send a photo of your meal to the Telegram bot.'}</div>`;
 }
 async function delMeal(id) { if (confirm('Delete this meal?')) { await fetch('/api/food/' + id + '/status', { method: 'POST', body: JSON.stringify({ status: 'discarded' }) }); load(); } }
 async function del(id) { if (confirm('Delete this reading?')) { await fetch('/api/readings/' + id, { method: 'DELETE' }); load(); } }

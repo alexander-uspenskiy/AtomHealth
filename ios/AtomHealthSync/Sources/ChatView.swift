@@ -49,6 +49,7 @@ struct ChatView: View {
     @State private var topVisible = false           // the "loading" row at the top is on screen
     @State private var pagingArmed = false          // ignore the top row while the chat is still laying out and scrolling to the end
     @State private var showStorage = false
+    @State private var keyboardUp = false           // the bottom bar hides then, so a back button shows in the header
     @State private var bannerDismissed = false
     @FocusState private var focused: Bool
 
@@ -71,10 +72,18 @@ struct ChatView: View {
                 composer
             }
             .appTabBar(model)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
             .overlay(alignment: .top) { toastView }
             .brandedScreen(title: "Coach")
             .toolbar {
                 ToolbarItem(placement: .principal) { header }
+                if keyboardUp {            // the bottom bar is hidden under the keyboard: a way back in the header
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { model.tab = .overview } label: { Image(systemName: "chevron.left") }
+                            .accessibilityLabel("Back to Overview")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { showCommands = true } label: { Label("Commands", systemImage: "slash.circle") }
