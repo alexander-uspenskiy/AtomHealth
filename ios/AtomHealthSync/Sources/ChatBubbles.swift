@@ -71,9 +71,18 @@ struct MessageBubble: View {
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .contextMenu {
                     if !plain.isEmpty { Button { UIPasteboard.general.string = plain } label: { Label("Copy", systemImage: "doc.on.doc") } }
+                    if mine, message.delivery != .answered {
+                        Button { Task { await model.resendChat(id: message.id) } } label: { Label("Resend", systemImage: "arrow.clockwise") }
+                    }
                     Button(role: .destructive, action: onDelete) { Label("Delete from this phone", systemImage: "trash") }
                 }
                 if !message.buttons.isEmpty { buttonRows }
+                if mine, message.delivery != .answered, Date().timeIntervalSince(message.date) > 45 {
+                    Button { Task { await model.resendChat(id: message.id) } } label: {
+                        Label("No reply yet. Resend", systemImage: "arrow.clockwise")
+                    }
+                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                }
             }
             if !mine { Spacer(minLength: 40) }
         }

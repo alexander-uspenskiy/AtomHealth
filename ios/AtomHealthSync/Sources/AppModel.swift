@@ -174,6 +174,24 @@ final class AppModel {
         await syncNow(health: false)
     }
 
+    /// Sends an unanswered message again (same bubble): its saved photos get fresh ids and chunks, so it works
+    /// even when the Mac dropped half-received chunks or never got the first attempt.
+    func resendChat(id: String) async {
+        guard config != nil, let m = await chatStore.prepareResend(id: id) else { return }
+        var changes: [LocalChange] = [], ids: [String] = []
+        for name in m.photos.prefix(ChatWire.maxPhotos) {
+            guard let jpeg = try? Data(contentsOf: chatStore.mediaURL(name)) else { continue }
+            let pid = UUID().uuidString.lowercased(); ids.append(pid)
+            changes += ChatWire.photoChunks(photoID: pid, jpeg: jpeg)
+        }
+        guard !ids.isEmpty || !m.text.isEmpty else { return }
+        changes.append(ids.isEmpty ? ChatWire.text(m.text) : ChatWire.message(text: m.text, photoIDs: ids))
+        await store.enqueue(contentsOf: changes)
+        pending = await store.pending().count
+        chat = await chatStore.snapshot()
+        await syncNow(health: false)
+    }
+
     /// What the chat header and the dot on the Chat button show; depends on the clock, so callers pass `now`.
     func chatStatus(at now: Date = Date()) -> ChatStatus {
         ChatStatus.derive(chat: chat, pingSentAt: pingSentAt, relayOK: relayOK, now: now)

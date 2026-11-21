@@ -217,6 +217,16 @@ func botOut(_ mid: Int, _ text: String, buttons: [[(String, String)]] = [], edit
     #expect(await s.snapshot().messages[2].delivery == .answered)
 }
 
+@Test func anUnansweredMessageCanBeQueuedAgain() async throws {
+    let s = ChatStore(directory: tempDir())
+    let me = await s.addUser(text: "beer and mushrooms", photos: ["p1"])
+    await s.markSent()
+    let again = await s.prepareResend(id: me.id)
+    #expect(again?.photos == ["p1"] && again?.delivery == .sending)
+    await s.apply(botOut(9, "answer"))
+    #expect(await s.prepareResend(id: me.id) == nil)             // answered: nothing to resend
+}
+
 @Test func aChatSavedByTheOldBuildIsImportedOnce() async throws {
     let dir = tempDir()
     let old = LegacyJSON(messages: [ChatMessage(id: "m1", role: .bot, text: "old", date: Date(timeIntervalSince1970: 1_700_000_000), mid: 1, delivery: .answered)], readAt: 5)

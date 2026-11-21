@@ -178,6 +178,15 @@ public actor ChatStore {
     /// Everything queued has now been handed to the relay.
     public func markSent() { changeUserMessages(where: { $0.delivery == .sending }) { $0.delivery = .sent } }
 
+    /// A user message the Mac never answered, put back in the queue: returns it (with its saved photo names) and
+    /// shows it as sending again. Nil if it is gone or already answered.
+    public func prepareResend(id: String) -> ChatMessage? {
+        guard var m = message(id), m.role == .user, m.delivery != .answered else { return nil }
+        m.delivery = .sending
+        store(m)
+        return m
+    }
+
     public func markRead(now: Date = Date()) { setReadAt(now.timeIntervalSince1970) }
 
     func setReadAt(_ t: Double) { db?.exec("INSERT OR REPLACE INTO meta(k, v) VALUES('readAt', ?)", [.double(t)]) }
