@@ -174,19 +174,31 @@ private struct RingView: View {
 
 struct IndexGrid: View {
     let items: [HealthMath.Index]
+    let m: HealthMath
+    @State private var showHRV = false
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            ForEach(items) { IndexTile(i: $0) }
+            ForEach(items) { i in
+                if i.id == "hrv" {
+                    Button { showHRV = true } label: { IndexTile(i: i, tappable: true) }.buttonStyle(.plain)
+                        .accessibilityHint("Opens the detailed HRV chart")
+                } else { IndexTile(i: i) }
+            }
         }
+        .sheet(isPresented: $showHRV) { HRVDetailView(m: m) }
     }
 }
 
 private struct IndexTile: View {
     let i: HealthMath.Index
+    var tappable = false
     var body: some View {
         let c = Theme.state(i.state)
         VStack(alignment: .leading, spacing: 4) {
-            Text(i.title).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+            HStack {
+                Text(i.title).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                if tappable { Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary) }
+            }
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(i.value).font(.title2.weight(.bold)).monospacedDigit().minimumScaleFactor(0.7).lineLimit(1)
                 Text(i.unit).font(.caption).foregroundStyle(.secondary).lineLimit(1)

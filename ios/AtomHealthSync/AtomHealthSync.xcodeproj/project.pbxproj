@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		08CDC14C682E2BAC68EA9522 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 75D1BFF380D55F890F1935C1 /* Assets.xcassets */; };
 		194D8AFC53FE1275F34D9FAE /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C111BC42161FC15AF3A9C6A /* ChatView.swift */; };
+		22BE4DC74A18EA87AFE04EDA /* HRVDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEB9AA634BC952AF1BB149FA /* HRVDetailView.swift */; };
 		408598D47357B2A45849DBA7 /* ChatBubbles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2938CA8AE818DEA7030D537E /* ChatBubbles.swift */; };
 		503D76C4DEAD09AD299A02DA /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC9426DB689E021E21FA8874 /* Theme.swift */; };
 		59EF1298056EEF7315150D5E /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6282DB1CDF51E54A4A32FCB /* Brand.swift */; };
@@ -34,6 +35,7 @@
 		928A4FC8AB4F2FDC504263F5 /* AtomHealthSync.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AtomHealthSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B407DFDDD6FD2B78EA23AE92 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		B57C1EE1756EB0419B2C989D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		BEB9AA634BC952AF1BB149FA /* HRVDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRVDetailView.swift; sourceTree = "<group>"; };
 		C9BE69E778A2889022AB7445 /* AtomHealthSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AtomHealthSync.entitlements; sourceTree = "<group>"; };
 		CC9426DB689E021E21FA8874 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		DC33DDAB9F95B464DF4F0660 /* AtomHealthSyncApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtomHealthSyncApp.swift; sourceTree = "<group>"; };
@@ -73,6 +75,7 @@
 				1C111BC42161FC15AF3A9C6A /* ChatView.swift */,
 				77D003CD3E0A30B0700FBC59 /* ContentView.swift */,
 				410C0AED451C58C7196289A5 /* HealthViews.swift */,
+				BEB9AA634BC952AF1BB149FA /* HRVDetailView.swift */,
 				B57C1EE1756EB0419B2C989D /* Info.plist */,
 				B407DFDDD6FD2B78EA23AE92 /* Keychain.swift */,
 				610762E64EF78A11719CD0FE /* OverviewView.swift */,
@@ -181,6 +184,7 @@
 				408598D47357B2A45849DBA7 /* ChatBubbles.swift in Sources */,
 				194D8AFC53FE1275F34D9FAE /* ChatView.swift in Sources */,
 				7F3493489255404B4E2D6F1C /* ContentView.swift in Sources */,
+				22BE4DC74A18EA87AFE04EDA /* HRVDetailView.swift in Sources */,
 				EF1198C613DCD1887081F48A /* HealthViews.swift in Sources */,
 				6A33938A457E9A1773CFEEF2 /* Keychain.swift in Sources */,
 				F4F4E3C72DE32A24DBF197E6 /* OverviewView.swift in Sources */,
