@@ -21,9 +21,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.3</string>
+	<string>1.4</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>5</string>
 	<key>NSCameraUsageDescription</key>
 	<string>AtomHealth takes meal photos for the chat with your AtomHealth coach. Photos are resized, then sent end-to-end encrypted to your Mac.</string>
 	<key>NSHealthShareUsageDescription</key>

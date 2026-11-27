@@ -7,11 +7,15 @@ actor FakeRelay: RelayAPI {
     var rows: [Row] = []
     var acks: [Int] = []
     var failPush = false
+    var pushesBeforeFailing: Int?          // succeed this many push requests, then fail (an interrupted sync)
+    var pushCalls = 0
     let selfDevice: String
     init(device: String) { selfDevice = device }
 
     func push(_ records: [RecordCrypto.Sealed]) throws {
+        pushCalls += 1
         if failPush { throw RelayError(message: "boom", status: 500) }
+        if let n = pushesBeforeFailing, pushCalls > n { throw RelayError(message: "network lost", status: nil) }
         for r in records { rows.append(Row(seq: rows.count + 1, device: selfDevice, rec: r)) }
     }
     func pull(since: Int, limit: Int) -> PullResult {
@@ -28,7 +32,51 @@ actor FakeRelay: RelayAPI {
         rows.append(Row(seq: rows.count + 1, device: device, rec: s))
     }
     func setFail(_ b: Bool) { failPush = b }
+    func failAfter(_ n: Int?) { pushesBeforeFailing = n; pushCalls = 0 }
     var count: Int { rows.count }
+}
+
+func day(_ i: Int) -> LocalChange {
+    LocalChange(type: .activityDay, id: "day:\(i)", op: .upsert, data: .object(["steps": .number(Double(i))]))
+}
+
+@Test func interruptedPushKeepsWhatWasSentAndResumes() async throws {
+    let relay = FakeRelay(device: "phone"), store = InMemoryStateStore(), sink = RecordingSink()
+    for i in 0..<120 { await store.enqueue(day(i)) }           // 3 relay requests of at most 50
+    await relay.failAfter(2)
+    let engine = SyncEngine(deviceID: "phone", key: K, relay: relay, store: store, sink: sink)
+    await #expect(throws: RelayError.self) { try await engine.cycle() }
+    #expect(await relay.count == 100)                          // the first two batches reached the relay ...
+    #expect(await store.pending() == (100..<120).map(day))     // ... and left the queue: only the rest is waiting
+    await relay.failAfter(nil)
+    #expect(try await engine.cycle().pushed == 20)
+    #expect(await store.pending().isEmpty)
+    #expect(await relay.count == 120)                          // nothing sent twice
+}
+
+@Test func chatIsSentBeforeAHealthBacklog() async throws {
+    let relay = FakeRelay(device: "phone"), store = InMemoryStateStore(), sink = RecordingSink()
+    for i in 0..<60 { await store.enqueue(day(i)) }
+    await store.enqueue(LocalChange(type: .chatIn, id: "p-1-0", op: .upsert, data: .object(["kind": .string("photo")])))
+    await store.enqueue(LocalChange(type: .chatIn, id: "m-1", op: .upsert, data: .object(["kind": .string("message")])))
+    await relay.failAfter(1)                                   // only the first request gets through
+    let engine = SyncEngine(deviceID: "phone", key: K, relay: relay, store: store, sink: sink)
+    _ = try? await engine.cycle()
+    let ids = try await relay.rows.map { r in
+        try Envelope.decode(RecordCrypto.open(nonce: r.rec.nonce, ciphertext: r.rec.ciphertext, key: K,
+                                              deviceID: "phone", recordID: r.rec.recordID)).id
+    }
+    #expect(Array(ids.prefix(2)) == ["p-1-0", "m-1"])          // the photo chunk, then its message, ahead of all days
+    #expect(await !store.pending().contains { $0.type == .chatIn })
+}
+
+@Test func changeReplacedWhileSendingStaysQueued() async throws {
+    let store = InMemoryStateStore()
+    await store.enqueue(day(1)); await store.enqueue(day(2))
+    let sent = await store.pending()
+    await store.enqueue(LocalChange(type: .activityDay, id: "day:1", op: .upsert, data: .object(["steps": .number(99)])))
+    await store.removePending(sent)
+    #expect(await store.pending().map(\.data) == [.object(["steps": .number(99)])])
 }
 
 actor RecordingSink: InboundSink {

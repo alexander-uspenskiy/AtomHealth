@@ -27,6 +27,16 @@ public protocol SyncStateStore: Sendable {
     func setVersion(_ v: Int, of type: EnvelopeType, id: String) async
     func pending() async -> [LocalChange]
     func removePending(count: Int) async
+    /// Removes these sent changes (the first equal one of each). A change that was replaced by a newer one while it
+    /// was being sent no longer matches, so the newer one stays queued.
+    func removePending(_ sent: [LocalChange]) async
+}
+
+extension Array where Element == LocalChange {
+    /// `removePending(_:)` for the stores: drops the first equal element of each sent change.
+    mutating func removeSent(_ sent: [LocalChange]) {
+        for c in sent { if let i = firstIndex(of: c) { remove(at: i) } }
+    }
 }
 
 /// Where inbound data lands (HealthKit on the phone). Throwing means "not applied": the cursor then stays put.
@@ -93,14 +103,20 @@ public actor SyncEngine {
         }
     }
 
+    /// Sends the queue one relay request at a time and takes each batch off the queue as soon as the relay has it,
+    /// so an interrupted sync (app suspended, phone locked, network gone) keeps what it already sent instead of
+    /// starting over. Chat goes first: a message never waits behind a backlog of Health records.
     func push(_ report: inout SyncReport) async throws {
         let changes = await store.pending()
         guard !changes.isEmpty else { return }
+        // chat keeps its own order (photo chunks before the message that uses them), and so do the others
+        let ordered = changes.filter { $0.type == .chatIn } + changes.filter { $0.type != .chatIn }
         let nowMs = Int(clock().timeIntervalSince1970 * 1000)
-        var versions: [String: Int] = [:]   // a second change to the same entity in one batch still increases
-        var sealed: [RecordCrypto.Sealed] = []
-        var applied: [(LocalChange, Int)] = []
-        for c in changes {
+        var versions: [String: Int] = [:]   // a second change to the same entity in one sync still increases
+        // seal everything into relay-sized batches first, then send them one by one
+        var batches: [[(change: LocalChange, version: Int, sealed: RecordCrypto.Sealed)]] = [[]]
+        var bytes = 0
+        for c in ordered {
             let k = "\(c.type.rawValue)|\(c.id)"
             let prev: Int?
             // chat_in ids are unique per message, so there is no version history to keep (or to grow forever)
@@ -109,13 +125,18 @@ public actor SyncEngine {
             versions[k] = version
             let env = Envelope(type: c.type, op: c.op, id: c.id, version: version,
                                updatedAt: Int(clock().timeIntervalSince1970), data: c.op == .delete ? nil : c.data)
-            sealed.append(try RecordCrypto.seal(env.encoded(), key: key, deviceID: deviceID, recordID: Self.newRecordID()))
-            applied.append((c, version))
+            let s = try RecordCrypto.seal(env.encoded(), key: key, deviceID: deviceID, recordID: Self.newRecordID())
+            let size = s.recordID.utf8.count + s.nonce.utf8.count + s.ciphertext.utf8.count + 64
+            let n = batches[batches.count - 1].count
+            if n >= RelayClient.pushBatch || (n > 0 && bytes + size > RelayClient.pushBytes) { batches.append([]); bytes = 0 }
+            batches[batches.count - 1].append((c, version, s)); bytes += size
         }
-        try await relay.push(sealed)
-        for (c, v) in applied where c.type != .chatIn { await store.setVersion(v, of: c.type, id: c.id) }
-        await store.removePending(count: changes.count)
-        report.pushed += changes.count
+        for batch in batches where !batch.isEmpty {
+            try await relay.push(batch.map(\.sealed))
+            for b in batch where b.change.type != .chatIn { await store.setVersion(b.version, of: b.change.type, id: b.change.id) }
+            await store.removePending(batch.map(\.change))
+            report.pushed += batch.count
+        }
     }
 
     /// 128 random bits, URL-safe, within the relay's `[A-Za-z0-9_-]{8,64}` rule.
@@ -137,5 +158,6 @@ public actor InMemoryStateStore: SyncStateStore {
     public func setVersion(_ v: Int, of type: EnvelopeType, id: String) { versions["\(type.rawValue)|\(id)"] = v }
     public func pending() -> [LocalChange] { queue }
     public func removePending(count: Int) { queue.removeFirst(min(count, queue.count)) }
+    public func removePending(_ sent: [LocalChange]) { queue.removeSent(sent) }
     public func enqueue(_ c: LocalChange) { queue.removeAll { $0.type == c.type && $0.id == c.id }; queue.append(c) }
 }
