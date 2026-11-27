@@ -158,7 +158,7 @@ def test_extend_pending_meal_reanalyses_all_photos():
         app.router.add_post("/v1/chat/completions", handler)
         async with TestServer(app) as srv:
             c = llm.LLM(base_url=str(srv.make_url("/v1")), model="m", api_key="k", timeout=5)
-            return await food.extend_meal(db, mid, [_jpeg()], "plus a cola", llm=c)
+            return await food.extend_meal(db, mid, [_jpeg(color=(20, 20, 200))], "plus a cola", llm=c)
 
     a = asyncio.run(go())
     user = calls[0]["messages"][1]["content"]
@@ -167,6 +167,20 @@ def test_extend_pending_meal_reanalyses_all_photos():
     row = db.execute("SELECT * FROM meals WHERE id=?", (mid,)).fetchone()
     assert row["kcal"] == 597 and row["caption"] == "lunch plus a cola"
     assert db.execute("SELECT COUNT(*) FROM meal_items WHERE meal_id=?", (mid,)).fetchone()[0] == 3
+
+
+def test_extend_with_the_same_photo_again_changes_nothing():
+    """A resent photo (or a copy still queued on the phone) must not be stored twice or trigger a new analysis."""
+    db = _mem_db()
+    photo = _jpeg()
+    mid = food.store_meal(db, food.validate(GOOD), photos=[photo], caption="lunch", ts=1_700_000_000)
+    before = db.execute("SELECT kcal, caption, raw_json FROM meals WHERE id=?", (mid,)).fetchone()
+    for caption in ("", "lunch"):
+        a = asyncio.run(food.extend_meal(db, mid, [photo, photo], caption, llm=None))  # no model call possible
+        assert a["totals"]["kcal"] == 458
+    assert food.meal_photo_count(db, mid) == 1
+    after = db.execute("SELECT kcal, caption, raw_json FROM meals WHERE id=?", (mid,)).fetchone()
+    assert tuple(after) == tuple(before)
 
 
 def test_cannot_extend_confirmed_or_missing_meal():

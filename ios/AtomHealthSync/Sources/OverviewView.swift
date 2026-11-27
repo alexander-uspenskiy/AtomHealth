@@ -23,7 +23,7 @@ struct OverviewView: View {
                             TrendCard(m: hm)
                             RingsCard(m: hm)
                             let idx = hm.indices()
-                            if !idx.isEmpty { IndexGrid(items: idx) }
+                            if !idx.isEmpty { IndexGrid(items: idx, m: hm) }
                             let hg = hm.gauges()
                             if !hg.isEmpty {
                                 Card(title: "Heart and sleep", subtitle: "Where your latest values sit on the usual scales") {

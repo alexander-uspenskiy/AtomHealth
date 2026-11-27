@@ -162,21 +162,25 @@ public final class HealthKitReader: @unchecked Sendable {
         guard let d = await state.blob("anchor.\(key)") else { return nil }
         return try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: d)
     }
-    func saveAnchor(_ a: HKQueryAnchor?, _ key: String) async {
-        let d = a.flatMap { try? NSKeyedArchiver.archivedData(withRootObject: $0, requiringSecureCoding: true) }
+    func saveAnchor(_ a: HKQueryAnchor, _ key: String) async {
+        guard let d = try? NSKeyedArchiver.archivedData(withRootObject: a, requiringSecureCoding: true) else { return }
         await state.setBlob(d, for: "anchor.\(key)")
     }
 
-    func anchored(_ type: HKSampleType, key: String) async -> ([HKSample], [HKDeletedObject], HKQueryAnchor?) {
+    /// Nil when the query failed (Health data is locked while the phone is, access was withdrawn, ...). The caller
+    /// then changes nothing: saving the missing anchor would erase the saved one, and the next read would queue
+    /// every workout and weight ever recorded again.
+    func anchored(_ type: HKSampleType, key: String) async -> ([HKSample], [HKDeletedObject], HKQueryAnchor)? {
         let start = await anchor(key)
         return await withCheckedContinuation { cont in
-            store.execute(HKAnchoredObjectQuery(type: type, predicate: HK.otherSources, anchor: start, limit: HKObjectQueryNoLimit) { _, s, d, a, _ in
+            store.execute(HKAnchoredObjectQuery(type: type, predicate: HK.otherSources, anchor: start, limit: HKObjectQueryNoLimit) { _, s, d, a, error in
+                guard error == nil, let a else { return cont.resume(returning: nil) }
                 cont.resume(returning: (s ?? [], d ?? [], a)) })
         }
     }
 
     func readBodyMass() async {
-        let (samples, deleted, newAnchor) = await anchored(HK.bodyMass, key: "bodyMass")
+        guard let (samples, deleted, newAnchor) = await anchored(HK.bodyMass, key: "bodyMass") else { return }
         for case let s as HKQuantitySample in samples {
             let near = { (t: HKQuantityType) async -> Double? in await self.nearest(t, to: s.startDate) }
             let fat = await near(HK.bodyFat).map { $0 * 100 }
@@ -200,7 +204,7 @@ public final class HealthKitReader: @unchecked Sendable {
     }
 
     func readWorkouts() async {
-        let (samples, deleted, newAnchor) = await anchored(HK.workout, key: "workout")
+        guard let (samples, deleted, newAnchor) = await anchored(HK.workout, key: "workout") else { return }
         for case let w as HKWorkout in samples {
             let kcal = w.statistics(for: HK.active)?.sumQuantity()?.doubleValue(for: HK.kcal)
             let dist = w.statistics(for: HKQuantityType(.distanceWalkingRunning))?.sumQuantity()?.doubleValue(for: .meter())
@@ -214,37 +218,31 @@ public final class HealthKitReader: @unchecked Sendable {
     // MARK: per-day totals (activity from all sources; nutrition from other apps only)
     func dayTotals(days: Int) async {
         let end = Date(), start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end)
-        let step = DateComponents(day: 1)
-        func sums(_ t: HKQuantityType, _ unit: HKUnit, other: Bool) async -> [String: Double] {
-            await withCheckedContinuation { cont in
-                let q = HKStatisticsCollectionQuery(quantityType: t, quantitySamplePredicate: other ? HK.otherSources : nil,
-                                                    options: .cumulativeSum, anchorDate: start, intervalComponents: step)
-                q.initialResultsHandler = { _, c, _ in
-                    var out: [String: Double] = [:]
-                    c?.enumerateStatistics(from: start, to: end) { s, _ in
-                        if let v = s.sumQuantity()?.doubleValue(for: unit) { out[HealthMapping.dayKey(s.startDate, calendar: self.calendar)] = v } }
-                    cont.resume(returning: out) }
-                store.execute(q)
+        func sums(_ t: HKQuantityType, _ unit: HKUnit, other: Bool) async -> [String: Double]? {
+            await dailyOrNil(t, unit, .cumulativeSum, predicate: other ? HK.otherSources : nil, from: start, to: end)
+        }
+        // A day is sent whole or not at all: if any one read fails (locked phone), a day with that field missing
+        // would replace the Mac's complete numbers, and the next good read would queue every day again.
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        if let active = await sums(HK.active, HK.kcal, other: false), let basal = await sums(HK.basal, HK.kcal, other: false),
+           let steps = await sums(HK.steps, .count(), other: false), let exercise = await sums(HK.exercise, .minute(), other: false),
+           let rhr = await dailyOrNil(HK.restingHR, bpm, .discreteAverage, from: start, to: end),
+           let hrv = await dailyOrNil(HK.hrv, .secondUnit(with: .milli), .discreteAverage, from: start, to: end),
+           let vo2 = await dailyOrNil(HK.vo2max, HKUnit(from: "ml/(kg*min)"), .discreteAverage, from: start, to: end) {
+            let activityDays = Set(active.keys).union(basal.keys).union(steps.keys).union(exercise.keys).union(rhr.keys).union(hrv.keys).union(vo2.keys)
+            for day in activityDays.sorted() {
+                let c = HealthMapping.activityDayChange(day: day, activeKcal: active[day], basalKcal: basal[day], steps: steps[day],
+                                                        exerciseMin: exercise[day], restingHR: rhr[day], hrv: hrv[day], vo2max: vo2[day])
+                await enqueueIfChanged(c, key: "fp.activity.\(day)")
             }
         }
-        let active = await sums(HK.active, HK.kcal, other: false), basal = await sums(HK.basal, HK.kcal, other: false)
-        let steps = await sums(HK.steps, .count(), other: false)
-        let bpm = HKUnit.count().unitDivided(by: .minute())
-        let exercise = await sums(HK.exercise, .minute(), other: false)
-        let rhr = await daily(HK.restingHR, bpm, .discreteAverage, from: start, to: end)
-        let hrv = await daily(HK.hrv, .secondUnit(with: .milli), .discreteAverage, from: start, to: end)
-        let vo2 = await daily(HK.vo2max, HKUnit(from: "ml/(kg*min)"), .discreteAverage, from: start, to: end)
-        let kcal = await sums(HK.energy, HK.kcal, other: true), prot = await sums(HK.protein, HK.g, other: true)
-        let carb = await sums(HK.carbs, HK.g, other: true), fat = await sums(HK.fat, HK.g, other: true), fib = await sums(HK.fiber, HK.g, other: true)
-        let activityDays = Set(active.keys).union(basal.keys).union(steps.keys).union(exercise.keys).union(rhr.keys).union(hrv.keys).union(vo2.keys)
-        for day in activityDays.sorted() {
-            let c = HealthMapping.activityDayChange(day: day, activeKcal: active[day], basalKcal: basal[day], steps: steps[day],
-                                                    exerciseMin: exercise[day], restingHR: rhr[day], hrv: hrv[day], vo2max: vo2[day])
-            await enqueueIfChanged(c, key: "fp.activity.\(day)")
-        }
-        for day in kcal.keys.sorted() {
-            let c = HealthMapping.nutritionDayChange(day: day, kcal: kcal[day], protein: prot[day], carbs: carb[day], fat: fat[day], fiber: fib[day])
-            await enqueueIfChanged(c, key: "fp.nutrition.\(day)")
+        if let kcal = await sums(HK.energy, HK.kcal, other: true), let prot = await sums(HK.protein, HK.g, other: true),
+           let carb = await sums(HK.carbs, HK.g, other: true), let fat = await sums(HK.fat, HK.g, other: true),
+           let fib = await sums(HK.fiber, HK.g, other: true) {
+            for day in kcal.keys.sorted() {
+                let c = HealthMapping.nutritionDayChange(day: day, kcal: kcal[day], protein: prot[day], carbs: carb[day], fat: fat[day], fiber: fib[day])
+                await enqueueIfChanged(c, key: "fp.nutrition.\(day)")
+            }
         }
     }
 
@@ -274,12 +272,19 @@ public final class HealthKitReader: @unchecked Sendable {
     }
 
     func daily(_ t: HKQuantityType, _ unit: HKUnit, _ options: HKStatisticsOptions, from start: Date, to end: Date) async -> [String: Double] {
+        await dailyOrNil(t, unit, options, from: start, to: end) ?? [:]
+    }
+
+    /// Nil when the query failed (Health data is locked while the phone is), as opposed to an empty answer.
+    func dailyOrNil(_ t: HKQuantityType, _ unit: HKUnit, _ options: HKStatisticsOptions, predicate: NSPredicate? = nil,
+                    from start: Date, to end: Date) async -> [String: Double]? {
         await withCheckedContinuation { cont in
-            let q = HKStatisticsCollectionQuery(quantityType: t, quantitySamplePredicate: nil, options: options,
+            let q = HKStatisticsCollectionQuery(quantityType: t, quantitySamplePredicate: predicate, options: options,
                                                 anchorDate: start, intervalComponents: DateComponents(day: 1))
-            q.initialResultsHandler = { _, c, _ in
+            q.initialResultsHandler = { _, c, error in
+                guard error == nil, let c else { return cont.resume(returning: nil) }
                 var out: [String: Double] = [:]
-                c?.enumerateStatistics(from: start, to: end) { s, _ in
+                c.enumerateStatistics(from: start, to: end) { s, _ in
                     let v = options == .cumulativeSum ? s.sumQuantity() : s.averageQuantity()
                     if let v = v?.doubleValue(for: unit) { out[HealthMapping.dayKey(s.startDate, calendar: self.calendar)] = v }
                 }

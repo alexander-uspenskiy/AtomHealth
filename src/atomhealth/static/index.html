@@ -119,6 +119,14 @@ tbody tr:hover { background:var(--surface2); } tr:last-child td { border-bottom:
 .kpi[data-z] { border-left:3px solid var(--kz); background:color-mix(in srgb,var(--kz) 7%,var(--surface)); }
 .kpi .l { display:flex; justify-content:space-between; align-items:center; gap:6px; }
 .kpi .l .chip { font-size:10.5px; padding:1px 7px; }
+.hrv-sum { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin:4px 0 8px; }
+.hrv-sum b { font-size:28px; letter-spacing:-.02em; } .hrv-sum small { font-size:13px; color:var(--muted); font-weight:500; margin-left:3px; }
+.hrv-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin:14px 0; }
+.hrv-stats div { font-size:12px; color:var(--muted); } .hrv-stats b { display:block; font-size:16px; color:var(--text); margin-top:2px; }
+.hrv-info { border-top:1px solid var(--border); padding-top:10px; font-size:13.5px; color:var(--text2); line-height:1.5; }
+.hrv-info summary { cursor:pointer; font-weight:650; color:var(--text); font-size:14.5px; }
+.hrv-info h3 { font-size:13.5px; margin:12px 0 4px; color:var(--text); } .hrv-info ul { margin:4px 0; padding-left:20px; } .hrv-info p { margin:8px 0; }
+.kpi.go { cursor:pointer; } .kpi.go:hover { border-color:var(--accent); }
 .kpi .l { font-size:12px; color:var(--muted); font-weight:600; }
 .kpi .v { font-size:21px; font-weight:700; letter-spacing:-.02em; margin:2px 0; }
 .kpi .v small { font-size:12px; color:var(--muted); font-weight:500; margin-left:3px; }
@@ -433,6 +441,31 @@ td.items { white-space:normal; min-width:200px; color:var(--text2); font-size:13
       <div class="card wide"><div class="card-h"><div><h2>Daily energy</h2><p class="sub" id="cEnergySub">Active + resting energy burned, with the food you logged</p></div></div><div class="chart-box"><canvas id="cEnergy"></canvas></div></div>
       <div class="card"><div class="card-h"><div><h2>Steps</h2><p class="sub" id="cStepsSub"></p></div></div><div class="chart-box"><canvas id="cSteps"></canvas></div></div>
       <div class="card"><div class="card-h"><div><h2>Workout minutes</h2><p class="sub" id="cWkSub"></p></div></div><div class="chart-box"><canvas id="cWk"></canvas></div></div>
+      <div class="card wide" id="hrvCard" hidden>
+        <div class="card-h"><div><h2>Heart rate variability</h2><p class="sub" id="cHrvSub"></p></div></div>
+        <div class="hrv-sum" id="hrvSum"></div>
+        <div class="chart-box"><canvas id="cHrv"></canvas></div>
+        <div class="hrv-stats" id="hrvStats"></div>
+        <details class="hrv-info" open>
+          <summary>What is HRV?</summary>
+          <p>Your heartbeat is not a metronome. The time between beats varies by a few milliseconds, and heart rate variability (HRV) measures how much. Apple Health records it as SDNN, the spread of those gaps, in milliseconds.</p>
+          <p>Higher usually means your nervous system is relaxed and recovered; lower means it is under load from hard training, stress, illness, alcohol or short sleep.</p>
+          <h3>How to read the chart</h3>
+          <ul>
+            <li>Dots are daily averages; the thick line smooths them over 7 readings.</li>
+            <li>The shaded band is your own normal range (average ± 0.75 standard deviations). Inside it is ordinary day-to-day noise.</li>
+            <li>The dashed line is your 7-day baseline, the same one the Overview tile compares against.</li>
+          </ul>
+          <h3>What matters</h3>
+          <ul>
+            <li>Compare with yourself, not other people: HRV differs a lot by age, genetics and device, so 40 ms can be normal for one person and 90 ms for another.</li>
+            <li>Trends beat single days. One low reading is common; several days below the band suggest you need rest.</li>
+            <li>Below 80% of baseline we say go easy; at or above 95% you are at baseline.</li>
+            <li>Helpers: consistent sleep, easy aerobic exercise, less alcohol, managing stress.</li>
+          </ul>
+          <p class="muted">Not medical advice. Talk to a doctor about persistent changes or symptoms.</p>
+        </details>
+      </div>
     </div>
     <div class="cols" style="margin-top:14px">
       <div class="card"><div class="card-h"><div><h2>Workouts</h2><p class="sub" id="wkListSub"></p></div></div><div class="scroll" id="wkList"></div><div class="more-row" id="wkMore"></div></div>
@@ -906,6 +939,44 @@ function mkBars(id, labels, datasets, { stacked = false, unit = '', ticks = 8 } 
 }
 const monday = k => { const d = keyDate(k), w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); return dayKey(d); };
 
+function renderHrv(n) {
+  const card = $('hrvCard'), all = A().days.filter(d => d.hrv != null);
+  card.hidden = !all.length;
+  if (card.hidden) return;
+  const days = actDays(n), labels = days.map(d => d.day), vals = days.map(d => d.hrv);
+  const have = vals.filter(v => v != null);
+  const col = css('--z1'), acc = css('--accent'), txt = css('--muted'), grid = css('--border');
+  const roll = vals.map((_, i) => { const w = vals.slice(Math.max(0, i - 6), i + 1).filter(v => v != null); return w.length >= 3 ? mean(w) : null; });
+  const mu = mean(have); let lo = null, hi = null;
+  if (have.length >= 5) { const sd = Math.sqrt(have.reduce((a, v) => a + (v - mu) ** 2, 0) / (have.length - 1)); lo = mu - .75 * sd; hi = mu + .75 * sd; }
+  const base = mean(all.filter(d => d.day !== A().today).slice(-7).map(d => d.hrv));
+  const latest = all[all.length - 1].hrv, ratio = base ? latest / base : null;
+  const word = ratio == null ? 'No baseline yet' : ratio >= 1.05 ? 'Above your baseline' : ratio >= .95 ? 'At your baseline' : ratio >= .8 ? 'Below your baseline' : 'Low: go easy today';
+  const cls = ratio == null ? 't2' : ratio >= .95 ? 'pos' : ratio >= .8 ? '' : 'neg';
+  $('cHrvSub').textContent = `Daily average SDNN from Apple Health · last ${n} days`;
+  $('hrvSum').innerHTML = `<span><b>${int(latest)}<small>ms</small></b> latest</span><span class="${cls}"><b style="font-size:14px">${word}</b></span>`;
+  $('hrvStats').innerHTML = [['Average', mu], ['Lowest', have.length ? Math.min(...have) : null], ['Highest', have.length ? Math.max(...have) : null], ['7-day baseline', base]]
+    .map(([l, v]) => `<div>${l}<b>${v == null ? '—' : int(v) + ' ms'}</b></div>`).join('');
+  if (charts.cHrv) charts.cHrv.destroy();
+  const ds = [];
+  if (lo != null) {
+    ds.push({ type: 'line', label: '_lo', data: labels.map(() => lo), borderWidth: 0, pointRadius: 0, fill: false, order: 5 });
+    ds.push({ type: 'line', label: 'Your normal range', data: labels.map(() => hi), borderWidth: 0, pointRadius: 0, backgroundColor: col + '22', fill: '-1', order: 5 });
+  }
+  if (base != null) ds.push({ type: 'line', label: 'Baseline', data: labels.map(() => base), borderColor: txt, borderDash: [6, 5], borderWidth: 1.6, pointRadius: 0, order: 3 });
+  ds.push({ type: 'line', label: 'Daily', data: vals, borderColor: col + 'aa', backgroundColor: col, borderWidth: 1.6, pointRadius: n > 90 ? 0 : n > 30 ? 2 : 3.5, tension: .3, spanGaps: true, order: 2 });
+  ds.push({ type: 'line', label: '7-day average', data: roll, borderColor: acc, backgroundColor: acc, borderWidth: 3, pointRadius: 0, tension: .3, spanGaps: true, order: 1 });
+  charts.cHrv = new Chart($('cHrv'), {
+    data: { labels, datasets: ds },
+    options: { animation: false, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { color: css('--text2'), usePointStyle: true, boxWidth: 8, filter: i => i.text && !i.text.startsWith('_') } },
+        tooltip: { backgroundColor: css('--text'), titleColor: css('--surface'), bodyColor: css('--surface'), padding: 10, cornerRadius: 8,
+          filter: i => !i.dataset.label.startsWith('_') && i.dataset.label !== 'Your normal range',
+          callbacks: { title: i => keyDate(i[0].label).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }), label: c => c.parsed.y == null ? null : ` ${c.dataset.label}: ${Math.round(c.parsed.y)} ms` } } },
+      scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: txt, maxTicksLimit: 8, maxRotation: 0, callback(v) { return fday(this.getLabelForValue(v)); } } },
+        y: { grid: { color: grid }, border: { display: false }, ticks: { color: txt } } } },
+  });
+}
 function renderActivity() {
   const empty = !hasAct();
   $('actEmpty').hidden = !empty; $('actMain').hidden = empty;
@@ -937,6 +1008,7 @@ function renderActivity() {
   $('cWkSub').textContent = perDay ? 'Per day' : 'Per week, weeks start on Monday';
   mkBars('cWk', perDay ? bk : bk.map(k => 'Wk ' + fday(k)), [{ label: 'Minutes', data: bk.map(k => buckets.get(k)), backgroundColor: css('--z2'), borderRadius: 3 }], { unit: ' min' });
   renderWorkouts(ws);
+  renderHrv(n);
 }
 
 function renderWorkouts(ws) {
@@ -1068,7 +1140,7 @@ function renderActCard() {
 function renderHeartKpis() {
   const last = k => { const r = A().days.filter(d => d[k] != null); return r.length ? r[r.length - 1] : null; };
   const base = k => mean(A().days.filter(d => d[k] != null && d.day !== A().today).slice(-7).map(d => d[k]));
-  const kp = (l, v, u, d, c) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div><div class="d ${c || 't2'}">${d}</div></div>`;
+  const kp = (l, v, u, d, c) => `<div class="kpi${l === 'Heart rate variability' ? ' go" data-go="hrv" title="Open the detailed HRV chart' : ''}"><div class="l">${l}${l === 'Heart rate variability' ? '<span class="chip">details ›</span>' : ''}</div><div class="v">${v}<small>${u}</small></div><div class="d ${c || 't2'}">${d}</div></div>`;
   const out = [], r = last('resting_hr'), h = last('hrv'), v = last('vo2max');
   if (r) { const b = base('resting_hr'), df = b == null ? 0 : r.resting_hr - b;
     out.push(kp('Resting heart rate', int(r.resting_hr), 'bpm', b == null ? 'no 7-day avg yet' : `${sgn(df, 0)} bpm vs 7-day avg · ${df <= 3 ? (df < -2 ? 'well recovered' : 'steady') : df <= 6 ? 'a little high' : 'elevated'}`, df <= 3 ? 'pos' : df <= 6 ? '' : 'neg')); }
@@ -1081,6 +1153,7 @@ document.querySelectorAll('#trRange button').forEach(b => b.onclick = () => {
   trDays = +b.dataset.d; document.querySelectorAll('#trRange button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderTrend();
 });
 $('actMore').onclick = () => showTab('activity');
+$('actCardKpis').addEventListener('click', e => { if (e.target.closest('[data-go="hrv"]')) { showTab('activity'); const c = $('hrvCard'); c && !c.hidden && c.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
 document.querySelectorAll('#actRange button').forEach(b => b.onclick = () => {
   actRange = +b.dataset.d; wkAll = false;
   document.querySelectorAll('#actRange button').forEach(x => x.setAttribute('aria-pressed', x === b));

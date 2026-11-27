@@ -236,7 +236,18 @@ async def extend_meal(db, meal_id: int, new_photos: list[bytes], new_caption: st
     if prev is None:
         raise AnalysisError("meal not found or already confirmed")
     new_photos = [prepare_image(p) for p in new_photos]  # also validates them before any DB change
-    caption = " ".join(c for c in (prev["caption"], (new_caption or "").strip()) if c)
+    # A photo identical to one the meal already has (a resend, or a copy still queued on the phone) adds nothing:
+    # drop it, and if nothing new is left, keep the meal exactly as it is instead of analysing it again.
+    seen, fresh = set(prev["photos"]), []
+    for p in new_photos:
+        if p not in seen:
+            seen.add(p)
+            fresh.append(p)
+    new_photos, new_caption = fresh, (new_caption or "").strip()
+    if not new_photos and (not new_caption or new_caption in prev["caption"]):
+        row = db.execute("SELECT raw_json FROM meals WHERE id=?", (meal_id,)).fetchone()
+        return json.loads(row[0]) if row and row[0] else {}
+    caption = " ".join(c for c in (prev["caption"], new_caption) if c)
     analysis = await analyze_meal(prev["photos"] + new_photos, caption, llm=llm)
     if not analysis["is_food"]:
         raise AnalysisError("the new photo does not show food")
@@ -254,6 +265,20 @@ def recent_meals(db, now=None, window=EDIT_WINDOW_SECS):
     now = now or time.time()
     return db.execute("SELECT * FROM meals WHERE status!='discarded' AND ts>=? AND ts<=? ORDER BY ts, id",
                       (now - window, now + 60)).fetchall()
+
+
+def meal_with_same_photos(db, photos: list[bytes], now=None, window=EDIT_WINDOW_SECS) -> int | None:
+    """The recent meal (saved or pending, not discarded) that already holds every one of these photos, if any.
+    A photo sent twice (a resend, or a copy delivered late by the phone) then reopens that meal instead of
+    logging the same food again."""
+    wanted = {prepare_image(p) for p in photos}
+    if not wanted:
+        return None
+    for m in reversed(recent_meals(db, now=now, window=window)):
+        have = {bytes(r[0]) for r in db.execute("SELECT data FROM meal_photos WHERE meal_id=?", (m["id"],))}
+        if wanted <= have:
+            return m["id"]
+    return None
 
 
 def meal_dishes(db, meal_id: int) -> list:

@@ -610,6 +610,15 @@ class TelegramBot:
                 photos = [await self.api.download(f) for f in file_ids]
                 s = self.sessions.get(chat_id)
                 extending = bool(self._session_open(s))
+                same = food.meal_with_same_photos(self.db, photos)
+                if same is not None and (caption or "").strip():   # a new note on the same photo is a real edit
+                    had = self.db.execute("SELECT caption FROM meals WHERE id=?", (same,)).fetchone()[0] or ""
+                    if caption.strip() not in had:
+                        same = None
+                if same is not None:            # the same photo again: show the meal it is already in, log nothing new
+                    self.sessions[chat_id] = {"meal_id": same, "msg_id": note["message_id"], "last": time.time()}
+                    await self._refresh_meal_message(chat_id, note["message_id"], same)
+                    return
                 if extending:
                     meal_id = s["meal_id"]
                     await food.extend_meal(self.db, meal_id, photos, caption)

@@ -191,6 +191,38 @@ public struct HealthMath: Sendable {
         return out
     }
 
+    // MARK: HRV detail
+    public struct HRVDetail: Sendable {
+        public var points: [TrendPoint]          // daily average SDNN, oldest first
+        public var rolling: [TrendPoint]         // trailing 7-reading average
+        public var baseline7: Double?            // same 7-day baseline the Overview tile uses
+        public var normalLow: Double?, normalHigh: Double?   // personal range: mean ± 0.75 SD over the period
+        public var latest: Double?, min: Double?, max: Double?, average: Double?
+        /// Latest as a share of the 7-day baseline (1.0 = at baseline).
+        public var ratio: Double? {
+            guard let l = latest, let b = baseline7, b > 0 else { return nil }
+            return l / b
+        }
+    }
+
+    public func hrvDetail(days: Int) -> HRVDetail {
+        let pts = trend(.hrv, days: days).points
+        let vals = pts.map(\.value)
+        var rolling: [TrendPoint] = []
+        for i in pts.indices where i >= 2 {
+            let w = vals[Swift.max(0, i - 6)...i]
+            rolling.append(TrendPoint(date: pts[i].date, value: w.reduce(0, +) / Double(w.count)))
+        }
+        let mean = avg(vals)
+        var lo: Double?, hi: Double?
+        if let mean, vals.count >= 5 {
+            let sd = (vals.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(vals.count - 1)).squareRoot()
+            lo = mean - 0.75 * sd; hi = mean + 0.75 * sd
+        }
+        return HRVDetail(points: pts, rolling: rolling, baseline7: avg(last7 { $0.hrv }), normalLow: lo, normalHigh: hi,
+                         latest: vals.last, min: vals.min(), max: vals.max(), average: mean)
+    }
+
     // MARK: trend chart
     public enum Metric: String, CaseIterable, Identifiable, Sendable {
         case weight, fat, steps, active, exercise, sleep, restingHR, hrv
