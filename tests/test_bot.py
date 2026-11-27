@@ -15,6 +15,13 @@ b = io.BytesIO()
 Image.new("RGB", (300, 200), (90, 160, 60)).save(b, "JPEG")
 JPEG = b.getvalue()
 
+
+def jpeg_for(fid):
+    """A distinct picture per file id (identical photos are deduplicated when a meal is extended)."""
+    out = io.BytesIO()
+    Image.new("RGB", (300, 200), (90, 160, sum(map(ord, fid)) % 256)).save(out, "JPEG")
+    return out.getvalue()
+
 GOOD = {"is_food": True, "meal_type": "lunch", "confidence": 0.7, "notes": "portion guessed",
         "items": [{"name": "rice", "grams": 200, "kcal": 260, "protein_g": 5, "carbs_g": 57, "fat_g": 0.5, "fiber_g": 1},
                   {"name": "chicken <b>", "grams": 120, "kcal": 198, "protein_g": 37, "carbs_g": 0, "fat_g": 4, "fiber_g": 0}]}
@@ -43,7 +50,7 @@ class FakeApi:
         return {}
 
     async def download(self, fid):
-        return JPEG
+        return jpeg_for(fid)
 
     def of(self, method):
         return [p for m, p in self.calls if m == method]
@@ -173,12 +180,25 @@ def test_second_photo_in_session_extends_same_meal(analyzed):
     assert any("Updated below" in e["text"] for e in bot.api.of("editMessageText"))
 
 
+def test_same_photo_again_reopens_its_meal_instead_of_logging_it_twice(analyzed):
+    """A resend (or a copy the phone delivers late, after the session expired) is not a new meal."""
+    async def go():
+        bot, _ = make_bot()
+        await bot.handle_update(photo_msg(fid="same"))
+        bot.sessions.clear()                        # e.g. the Mac restarted or 10 minutes passed
+        await bot.handle_update(photo_msg(fid="same"))
+        await bot.handle_update(photo_msg(fid="same"))
+    run(go())
+    assert meal_count() == 1 and [c["n"] for c in analyzed] == [1]
+    assert food.meal_photo_count(appmod.db, appmod.db.execute("SELECT id FROM meals").fetchone()[0]) == 1
+
+
 def test_expired_session_starts_new_meal(analyzed):
     async def go():
         bot, _ = make_bot()
         await bot.handle_update(photo_msg())
         bot.sessions[42]["last"] -= 11 * 60
-        await bot.handle_update(photo_msg())
+        await bot.handle_update(photo_msg(fid="f2"))
     run(go())
     assert meal_count() == 2
 
@@ -204,7 +224,7 @@ def test_save_button_confirms_and_ends_session(analyzed):
         cq = {"id": "c1", "from": {"id": 42}, "data": f"save:{mid}", "message": {"chat": {"id": 42}, "message_id": 101}}
         await bot.handle_update({"update_id": 3, "callback_query": cq})
         await bot.handle_update({"update_id": 4, "callback_query": {**cq, "id": "c2"}})  # double tap
-        await bot.handle_update(photo_msg())  # new meal, not an extension
+        await bot.handle_update(photo_msg(fid="f2"))  # new meal, not an extension
         return bot
     bot = run(go())
     assert [c["text"] for c in bot.api.of("answerCallbackQuery")] == ["Saved ✓", "Already confirmed"]
